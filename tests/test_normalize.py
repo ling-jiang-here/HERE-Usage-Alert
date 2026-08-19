@@ -18,3 +18,13 @@ class NormalizeTests(unittest.TestCase):
                 "usage_date_utc": "2026-08-18", "metric": "transactions", "quantity": -1,
                 "unit": "transactions",
             }])
+
+    def test_normalizes_documented_here_usage_item(self) -> None:
+        records = normalize_records({"items": [{
+            "usageDateTime": "2026-08-18T00:00:00", "name": "Routing", "usageValue": "125000",
+            "valueDriver": "Transactions", "featureId": "routing", "appId": "fleet-prod",
+            "projectHrn": "hrn:here:authorization::org:project/fleet", "billingTag": "production",
+        }]})
+        self.assertEqual("Routing", records[0].metric)
+        self.assertEqual(125000, records[0].quantity)
+        self.assertEqual("fleet-prod", records[0].app_id)

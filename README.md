@@ -10,7 +10,7 @@ The processing MVP is runnable from a recorded fixture. Live HERE collection is 
 
 1. Copy [.env.example](.env.example) to `.env` and populate the client ID and client secret.
 2. Set `HERE_REALM_ID` to the organization realm ID.
-3. Confirm the Usage API path in HERE documentation, then set `HERE_USAGE_API_USAGE_PATH`. It must begin with `/`.
+3. Keep the documented default `HERE_USAGE_API_USAGE_PATH=/usage/realms/{realmId}` unless HERE changes the API contract.
 4. Run the test suite:
 
 ```sh
@@ -42,7 +42,7 @@ Before enabling the scheduled workflow, collect one completed UTC day from the H
 - The JSON response/pagination shape and report latency.
 - A redacted response fixture that reconciles to the HERE dashboard total.
 
-Update only [src/usage_alert/normalize.py](src/usage_alert/normalize.py) for the confirmed payload shape. The provided example fixture uses a temporary `records` contract and is not a claim about HERE's production response schema.
+The current integration targets Cost Management Usage API v2 at `https://usage.bam.api.here.com/v2`, using `GET /usage/realms/{realmId}` with day-level detail and `appId`, `billingTag`, and `project` groups. Update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its documented response schema.
 
 ## GitHub Actions
 

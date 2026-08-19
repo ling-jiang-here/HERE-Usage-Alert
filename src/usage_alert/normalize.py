@@ -16,7 +16,7 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
 
     Replace only this mapper when the redacted HERE Usage API response is available.
     """
-    rows = payload.get("records") if isinstance(payload, dict) else payload
+    rows = payload.get("items", payload.get("records")) if isinstance(payload, dict) else payload
     if not isinstance(rows, list):
         raise SchemaError("Expected a list or an object with a 'records' list")
 
@@ -27,20 +27,25 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
         if not isinstance(row, dict):
             raise SchemaError(f"Record {index} is not an object")
         try:
-            usage_date = date.fromisoformat(str(row["usage_date_utc"]))
-            metric = str(row["metric"]).strip()
-            quantity = float(row["quantity"])
-            unit = str(row["unit"]).strip()
+            usage_date = date.fromisoformat(str(_first_value(row, "usage_date_utc", "usageDateTime"))[:10])
+            metric = str(_first_value(row, "metric", "name", "featureId")).strip()
+            quantity = float(_first_value(row, "quantity", "usageValue"))
+            unit = str(_first_value(row, "unit", "valueDriver", default="usage")).strip()
         except (KeyError, TypeError, ValueError) as error:
             raise SchemaError(f"Record {index} has invalid required fields") from error
         if not metric or not unit or quantity < 0:
             raise SchemaError(f"Record {index} has an empty metric/unit or negative quantity")
 
-        dimensions = {
-            key: str(row[key]).strip()
-            for key in ("feature_id", "app_id", "project_id", "billing_tag")
-            if row.get(key) not in (None, "")
-        }
+        dimensions = {}
+        for key, candidates in (
+            ("feature_id", ("feature_id", "featureId")),
+            ("app_id", ("app_id", "appId")),
+            ("project_id", ("project_id", "projectHrn")),
+            ("billing_tag", ("billing_tag", "billingTag")),
+        ):
+            value = _first_value(row, *candidates, default=None)
+            if value not in (None, ""):
+                dimensions[key] = str(value).strip()
         dimension_key = json.dumps(dimensions, sort_keys=True, separators=(",", ":"))
         unique_key = (usage_date, metric, dimension_key)
         if unique_key in seen:
@@ -61,3 +66,12 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
             )
         )
     return records
+
+
+def _first_value(row: dict[str, Any], *keys: str, default: Any = ...) -> Any:
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    if default is not ...:
+        return default
+    raise KeyError(keys[0])
