@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usage-alert"
+version = "0.1.0"
+description = "Scheduled HERE organization usage anomaly monitoring"
+requires-python = ">=3.12"
+
+[project.scripts]
+usage-alert = "usage_alert.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

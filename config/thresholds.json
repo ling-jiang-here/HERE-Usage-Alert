@@ -1,0 +1,11 @@
+{
+  "history_days": 30,
+  "minimum_baseline_days": 14,
+  "minimum_absolute_increase": 1000,
+  "percentage_increase_threshold": 0.5,
+  "robust_z_score_threshold": 3.5,
+  "severity": {
+    "warning_percentage": 0.5,
+    "critical_percentage": 2.0
+  }
+}

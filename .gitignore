@@ -1,0 +1,9 @@
+# Local credentials
+.env
+
+# Raw API responses can contain sensitive operational data.
+artifacts/
+
+# Python bytecode
+__pycache__/
+*.py[cod]

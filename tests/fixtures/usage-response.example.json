@@ -1,0 +1,12 @@
+{
+  "records": [
+    {
+      "usage_date_utc": "2026-08-18",
+      "metric": "transactions",
+      "quantity": 125000,
+      "unit": "transactions",
+      "feature_id": "routing",
+      "app_id": "example-app"
+    }
+  ]
+}
