@@ -9,6 +9,11 @@ on:
         description: "Completed UTC usage date (YYYY-MM-DD); defaults to yesterday"
         required: false
         type: string
+      test_webhook:
+        description: "Send a synthetic webhook test event without querying HERE"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -37,6 +42,10 @@ jobs:
           python-version: "3.12"
       - name: Collect and analyze usage
         run: |
+          if [ "${{ inputs.test_webhook }}" = "true" ]; then
+            PYTHONPATH=src python -m usage_alert.main --test-webhook
+            exit 0
+          fi
           args=(--fetch)
           if [ -n "${{ inputs.usage_date }}" ]; then args+=(--date "${{ inputs.usage_date }}"); fi
           PYTHONPATH=src python -m usage_alert.main "${args[@]}"
