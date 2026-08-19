@@ -10,6 +10,7 @@ from .config import load_detection_config, load_dotenv
 from .detect import detect_anomalies
 from .notify import notify_webhook
 from .normalize import normalize_records
+from .quota import evaluate_month_to_date, load_free_tiers
 from .report import render_daily_report, write_daily_report
 from .storage import read_records, write_daily_records, write_raw_artifact
 
@@ -48,7 +49,13 @@ def main() -> int:
     all_records = history + daily_records
     config = load_detection_config(arguments.root / "config" / "thresholds.json")
     anomalies = detect_anomalies(all_records, target_date, config)
-    report = render_daily_report(daily_records, anomalies)
+    threshold, free_tiers = load_free_tiers(arguments.root / "config" / "free_tiers.json")
+    month_records = [
+        record for record in all_records
+        if record.usage_date.year == target_date.year and record.usage_date.month == target_date.month
+    ]
+    quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers)
+    report = render_daily_report(daily_records, anomalies, quota_statuses)
     report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
     notified = notify_webhook(anomalies, daily_records, str(report_path))
     print(f"Wrote report: {report_path}")

@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from usage_alert.models import UsageRecord
+from usage_alert.quota import QuotaStatus
 from usage_alert.report import render_daily_report
 from usage_alert.storage import read_records, write_daily_records
 
@@ -35,3 +36,9 @@ class StorageAndReportTests(unittest.TestCase):
         self.assertIn("| transactions | transactions | 12,500.00 |", report)
         self.assertIn("| GB-Months | Data IO | 3,000.00 |", report)
         self.assertNotIn("Total quantity", report)
+
+    def test_report_includes_month_to_date_quota_status(self) -> None:
+        quota = QuotaStatus("Autocomplete", 24_000, 30_000, 0.8, "APPROACHING")
+        report = render_daily_report([self.record], [], [quota])
+        self.assertIn("## Month-To-Date Free-Tier Status", report)
+        self.assertIn("| Autocomplete | 24,000 | 30,000 | 80.0% | APPROACHING |", report)

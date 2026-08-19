@@ -1,0 +1,33 @@
+{
+  "approaching_threshold": 0.8,
+  "transaction_free_tiers": {
+    "Autocomplete": 30000,
+    "Autosuggest": 5000,
+    "Geocode & Reverse Geocode": 30000,
+    "Raster Tile": 30000,
+    "Speed Limits": 2500,
+    "Discover / Search": 5000,
+    "EV Charge Points": 5000,
+    "Time Aware Routing": 5000,
+    "Routing Car, Bicycle, Pedestrian": 30000,
+    "Routing scooter / two wheel": 5000,
+    "Routing Taxi": 5000,
+    "Routing Truck": 5000,
+    "Routing Bus": 5000,
+    "Routing EV": 2500,
+    "Route Import": 2500,
+    "Toll Cost": 2500,
+    "Matrix Routing": 2500,
+    "Isoline Routing": 2500,
+    "Waypoints Sequence": 2500,
+    "Tour Planning": 500,
+    "Traffic": 5000,
+    "Advanced Traffic": 2500,
+    "Traffic Raster Tile": 30000,
+    "Traffic Vector Tile": 30000,
+    "Public Transit": 5000,
+    "Intermodal Routing": 2500,
+    "Network Positioning": 5000,
+    "Destination Weather": 2500
+  }
+}

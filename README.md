@@ -69,3 +69,11 @@ To verify online webhook delivery, manually run **HERE Usage Monitor** with `tes
 For each metric and available dimension set, the monitor requires 14 prior daily observations. It compares the target day with the previous 30 days using median and median absolute deviation (MAD). A spike must pass both the percentage/absolute thresholds and a robust z-score threshold. When MAD is zero, the configured absolute increase rule prevents divide-by-zero and low-volume noise.
 
 An alert identifies contributing dimensions, not root cause. Deployment, retry, caching, and credential-leak explanations remain unverified hypotheses until application telemetry is correlated.
+
+## Monthly Free-Tier Monitoring
+
+Each daily report includes month-to-date transaction totals for services whose public Base Plan free tiers are configured in `config/free_tiers.json`. A service is `APPROACHING` at 80% of its allowance and `EXCEEDED` at 100%. The monitor only compares `Transactions`; data and storage units are excluded because they use different billing dimensions.
+
+## Pricing Reference
+
+Current public HERE Base Plan free-tier allowances are recorded in [docs/here-base-plan-free-tiers.md](docs/here-base-plan-free-tiers.md). The reference is dated and must be reviewed against HERE's pricing page and the organization's agreement before it is used for billing decisions.

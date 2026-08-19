@@ -4,9 +4,12 @@ from collections import defaultdict
 from pathlib import Path
 
 from .models import Anomaly, UsageRecord
+from .quota import QuotaStatus
 
 
-def render_daily_report(records: list[UsageRecord], anomalies: list[Anomaly]) -> str:
+def render_daily_report(
+    records: list[UsageRecord], anomalies: list[Anomaly], quota_statuses: list[QuotaStatus] | None = None
+) -> str:
     usage_date = records[0].usage_date.isoformat() if records else "unknown"
     lines = [
         f"# HERE Usage Report: {usage_date}",
@@ -22,6 +25,26 @@ def render_daily_report(records: list[UsageRecord], anomalies: list[Anomaly]) ->
     for unit, metric, quantity in summarize_usage(records):
         lines.append(f"| {unit} | {metric} | {quantity:,.2f} |")
     lines.extend([
+        "",
+        "## Month-To-Date Free-Tier Status",
+        "",
+    ])
+    if not quota_statuses:
+        lines.append("No transaction usage matched a configured free-tier service for this month.")
+    else:
+        lines.extend([
+            "| Service | MTD Transactions | Free Allowance | Used | Status |",
+            "| --- | ---: | ---: | ---: | --- |",
+        ])
+        for quota in quota_statuses:
+            lines.append(
+                f"| {quota.metric} | {quota.usage:,.0f} | {quota.allowance:,.0f} | "
+                f"{quota.percentage:.1%} | {quota.status} |"
+            )
+    lines.extend([
+        "",
+        "Only transaction-based services with configured public free tiers are evaluated. "
+        "Storage and data units are not combined with transaction allowances.",
         "",
         "## Anomalies",
         "",
