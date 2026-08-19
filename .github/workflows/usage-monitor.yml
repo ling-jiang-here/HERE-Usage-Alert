@@ -22,14 +22,14 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     env:
-      HERE_USAGE_API_BASE_URL: https://usage.bam.api.here.com/v2
-      HERE_REALM_ID: ${{ secrets.HERE_REALM_ID }}
+      HERE_USAGE_API_BASE_URL: ${{ vars.HERE_USAGE_API_BASE_URL }}
+      HERE_REALM_ID: ${{ vars.HERE_REALM_ID }}
       HERE_USAGE_API_CLIENT_ID: ${{ secrets.HERE_USAGE_API_CLIENT_ID }}
       HERE_USAGE_API_CLIENT_SECRET: ${{ secrets.HERE_USAGE_API_CLIENT_SECRET }}
-      HERE_OAUTH_TOKEN_URL: https://account.api.here.com/oauth2/token
-      HERE_OAUTH_SCOPE: ${{ secrets.HERE_OAUTH_SCOPE }}
-      HERE_USAGE_API_USAGE_PATH: /usage/realms/{realmId}
-      ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+      HERE_OAUTH_TOKEN_URL: ${{ vars.HERE_OAUTH_TOKEN_URL }}
+      HERE_OAUTH_SCOPE: ${{ vars.HERE_OAUTH_SCOPE }}
+      HERE_USAGE_API_USAGE_PATH: ${{ vars.HERE_USAGE_API_USAGE_PATH }}
+      ALERT_WEBHOOK_URL: ${{ vars.ALERT_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
