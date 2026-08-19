@@ -48,13 +48,10 @@ The current integration targets Cost Management Usage API v2 at `https://usage.b
 
 The workflow is at [.github/workflows/usage-monitor.yml](.github/workflows/usage-monitor.yml). Add these repository secrets before enabling it:
 
-- `HERE_USAGE_API_BASE_URL`
 - `HERE_REALM_ID`
 - `HERE_USAGE_API_CLIENT_ID`
 - `HERE_USAGE_API_CLIENT_SECRET`
-- `HERE_OAUTH_TOKEN_URL`
 - `HERE_OAUTH_SCOPE` (optional, but create it as an empty secret if no scope is required)
-- `HERE_USAGE_API_USAGE_PATH`
 - `ALERT_WEBHOOK_URL` (optional generic HTTPS endpoint for anomaly delivery)
 
 It runs daily at 08:20 UTC and can be manually dispatched for a historical date. It commits only curated aggregate CSV and Markdown reports; raw API responses are not committed or uploaded. When an anomaly is found, it POSTs one JSON payload to `ALERT_WEBHOOK_URL` and creates or updates the corresponding GitHub Issue.
