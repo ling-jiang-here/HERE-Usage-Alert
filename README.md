@@ -1,10 +1,10 @@
 # HERE Usage Alert
 
-Scheduled, organization-wide HERE usage anomaly monitoring with no hosted database or dashboard. It stores approved daily aggregates in `data/curated/`, generates Markdown reports in `reports/`, and can create a deduplicated GitHub Issue for a detected spike.
+Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. It stores billable daily aggregates in `data/curated/`, generates Markdown reports in `reports/`, posts a webhook event after each successful run, and creates a deduplicated GitHub Issue for a detected spike.
 
 ## Status
 
-The processing MVP is runnable from a recorded fixture. Live HERE collection is intentionally blocked until the real Usage API request path, query parameter names, and response schema are verified against a redacted export.
+Live collection uses HERE Cost Management Usage API v2. The monitor preserves HERE's billing unit and reports `billableValue` when it is supplied, rather than raw metering input.
 
 ## Local setup
 
@@ -25,7 +25,7 @@ PYTHONPATH=src python3 -m usage_alert.main \
   --date 2026-08-18
 ```
 
-Run a live collection only after the API contract is verified:
+Run a live collection:
 
 ```sh
 PYTHONPATH=src python3 -m usage_alert.main --fetch --date 2026-08-18
@@ -33,16 +33,9 @@ PYTHONPATH=src python3 -m usage_alert.main --fetch --date 2026-08-18
 
 The program uses OAuth client credentials to obtain a short-lived access token. It never logs the client secret or access token.
 
-## HERE API Contract Gate
+## HERE API Contract
 
-Before enabling the scheduled workflow, collect one completed UTC day from the HERE Usage Dashboard/export and record:
-
-- The exact endpoint path and request query names, including the realm filter.
-- The authentication scope, if the client needs one.
-- The JSON response/pagination shape and report latency.
-- A redacted response fixture that reconciles to the HERE dashboard total.
-
-The current integration targets Cost Management Usage API v2 at `https://usage.bam.api.here.com/v2`, using `GET /usage/realms/{realmId}` with day-level detail and `appId`, `billingTag`, and `project` groups. The monitor reports HERE's `billableValue` when supplied, rather than raw `usageValue`, so data-service quantities align with billed units. Update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its documented response schema.
+The integration targets Cost Management Usage API v2 at `https://usage.bam.api.here.com/v2`, using `GET /usage/realms/{realmId}` with day-level detail and `appId`, `billingTag`, and `project` groups. Update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its response schema.
 
 ## GitHub Actions
 
@@ -72,7 +65,7 @@ An alert identifies contributing dimensions, not root cause. Deployment, retry, 
 
 ## Monthly Free-Tier Monitoring
 
-Each daily report includes month-to-date transaction totals for services whose public Base Plan free tiers are configured in `config/free_tiers.json`. A service is `APPROACHING` at 80% of its allowance and `EXCEEDED` at 100%. The monitor only compares `Transactions`; data and storage units are excluded because they use different billing dimensions.
+Each daily report includes month-to-date transaction totals for services whose public Base Plan free tiers are configured in `config/free_tiers.json`. A service is `APPROACHING` at 80% of its allowance and `EXCEEDED` at 100%. DataStorage records are included as Data IO totals within their matching billing unit; non-comparable units remain in the usage summary.
 
 ## Pricing Reference
 

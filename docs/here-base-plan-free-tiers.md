@@ -24,4 +24,4 @@ The pricing page states that a transaction is generally counted per request, but
 | --- | --- |
 | Data IO | 20 GB |
 
-Data and storage values must not be added to location-service transaction counts. Preserve the HERE-reported unit (`Transactions`, `GB-Months`, `MB/S-Months`, and so on) and compare or summarize only within the same unit.
+Data and storage values must not be added to location-service transaction counts. Preserve the HERE-reported unit (`Transactions`, `GB-Months`, `MB/S-Months`, and so on) and compare or summarize only within the same unit. The monitor treats HERE `DataStorage` records as Data IO/storage consumption, totaling values only within matching units.
