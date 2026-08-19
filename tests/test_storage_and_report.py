@@ -37,8 +37,18 @@ class StorageAndReportTests(unittest.TestCase):
         self.assertIn("| GB-Months | Data IO | 3,000.00 |", report)
         self.assertNotIn("Total quantity", report)
 
+    def test_report_preserves_small_billable_quantity_precision(self) -> None:
+        throughput_record = UsageRecord(
+            date(2026, 8, 18), "Data IO", 0.0312, "MB/S-Months", "data-io", "storage-app",
+            None, None, '{"app_id":"storage-app","feature_id":"data-io"}', datetime.now(timezone.utc),
+        )
+        self.assertIn("| MB/S-Months | Data IO | 0.0312 |", render_daily_report([throughput_record], []))
+
     def test_report_includes_month_to_date_quota_status(self) -> None:
         quota = QuotaStatus("Autocomplete", 24_000, 30_000, 0.8, "APPROACHING")
         report = render_daily_report([self.record], [], [quota])
         self.assertIn("## Month-To-Date Free-Tier Status", report)
-        self.assertIn("| Autocomplete | 24,000 | 30,000 | 80.0% | APPROACHING |", report)
+        self.assertIn(
+            "| Autocomplete | 24,000.00 Transactions | 30,000.00 Transactions | 80.0% | APPROACHING |",
+            report,
+        )

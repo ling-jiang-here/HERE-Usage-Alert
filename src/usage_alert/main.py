@@ -49,12 +49,12 @@ def main() -> int:
     all_records = history + daily_records
     config = load_detection_config(arguments.root / "config" / "thresholds.json")
     anomalies = detect_anomalies(all_records, target_date, config)
-    threshold, free_tiers = load_free_tiers(arguments.root / "config" / "free_tiers.json")
+    threshold, free_tiers, data_io_free_gb = load_free_tiers(arguments.root / "config" / "free_tiers.json")
     month_records = [
         record for record in all_records
         if record.usage_date.year == target_date.year and record.usage_date.month == target_date.month
     ]
-    quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers)
+    quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
     report = render_daily_report(daily_records, anomalies, quota_statuses)
     report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
     notified = notify_webhook(anomalies, daily_records, str(report_path))

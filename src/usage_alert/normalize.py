@@ -29,7 +29,7 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
         try:
             usage_date = date.fromisoformat(str(_first_value(row, "usage_date_utc", "usageDateTime"))[:10])
             metric = str(_first_value(row, "metric", "name", "featureId")).strip()
-            quantity = float(_first_value(row, "quantity", "usageValue"))
+            quantity = float(_first_value(row, "quantity", "billableValue", "usageValue"))
             unit = str(_first_value(row, "unit", "valueDriver", default="usage")).strip()
         except (KeyError, TypeError, ValueError) as error:
             raise SchemaError(f"Record {index} has invalid required fields") from error
@@ -63,6 +63,7 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
                 billing_tag=dimensions.get("billing_tag"),
                 dimension_key=dimension_key,
                 source_retrieved_at=timestamp,
+                category=_first_value(row, "category", default=None),
             )
         )
     return records

@@ -28,3 +28,10 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual("Routing", records[0].metric)
         self.assertEqual(125000, records[0].quantity)
         self.assertEqual("fleet-prod", records[0].app_id)
+
+    def test_prefers_here_billable_value_over_raw_usage_value(self) -> None:
+        records = normalize_records({"items": [{
+            "usageDateTime": "2026-08-18T00:00:00", "name": "Stream throughput",
+            "usageValue": 23_552_000, "billableValue": 0.0312, "valueDriver": "MB/S-Months",
+        }]})
+        self.assertEqual(0.0312, records[0].quantity)

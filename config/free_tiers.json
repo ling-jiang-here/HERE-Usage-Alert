@@ -1,5 +1,6 @@
 {
   "approaching_threshold": 0.8,
+  "data_io_free_gb_months": 20,
   "transaction_free_tiers": {
     "Autocomplete": 30000,
     "Autosuggest": 5000,

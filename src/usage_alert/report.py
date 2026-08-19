@@ -23,7 +23,7 @@ def render_daily_report(
         "| --- | --- | ---: |",
     ]
     for unit, metric, quantity in summarize_usage(records):
-        lines.append(f"| {unit} | {metric} | {quantity:,.2f} |")
+        lines.append(f"| {unit} | {metric} | {format_quantity(quantity)} |")
     lines.extend([
         "",
         "## Month-To-Date Free-Tier Status",
@@ -33,18 +33,20 @@ def render_daily_report(
         lines.append("No transaction usage matched a configured free-tier service for this month.")
     else:
         lines.extend([
-            "| Service | MTD Transactions | Free Allowance | Used | Status |",
+            "| Service | MTD Usage | Free Allowance | Used | Status |",
             "| --- | ---: | ---: | ---: | --- |",
         ])
         for quota in quota_statuses:
+            allowance = f"{format_quantity(quota.allowance)} {quota.unit}" if quota.allowance is not None else "N/A"
+            percentage = f"{quota.percentage:.1%}" if quota.percentage is not None else "N/A"
             lines.append(
-                f"| {quota.metric} | {quota.usage:,.0f} | {quota.allowance:,.0f} | "
-                f"{quota.percentage:.1%} | {quota.status} |"
+                f"| {quota.metric} | {format_quantity(quota.usage)} {quota.unit} | {allowance} | "
+                f"{percentage} | {quota.status} |"
             )
     lines.extend([
         "",
-        "Only transaction-based services with configured public free tiers are evaluated. "
-        "Storage and data units are not combined with transaction allowances.",
+        "Transaction services and Data IO totals are evaluated only against matching free-tier units. "
+        "DataStorage records are included as Data IO usage; non-comparable units remain in the usage summary only.",
         "",
         "## Anomalies",
         "",
@@ -83,6 +85,11 @@ def summarize_usage(records: list[UsageRecord]) -> list[tuple[str, str, float]]:
         (unit, metric, quantity)
         for (unit, metric), quantity in sorted(totals.items(), key=lambda item: (item[0][0], item[0][1]))
     ]
+
+
+def format_quantity(quantity: float) -> str:
+    precision = 4 if 0 < abs(quantity) < 1 else 2
+    return f"{quantity:,.{precision}f}"
 
 
 def write_daily_report(contents: str, directory: Path, usage_date: str) -> Path:

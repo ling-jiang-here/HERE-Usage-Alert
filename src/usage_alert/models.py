@@ -16,6 +16,7 @@ class UsageRecord:
     billing_tag: str | None
     dimension_key: str
     source_retrieved_at: datetime
+    category: str | None = None
 
 
 @dataclass(frozen=True)

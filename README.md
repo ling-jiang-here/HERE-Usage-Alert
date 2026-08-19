@@ -42,7 +42,7 @@ Before enabling the scheduled workflow, collect one completed UTC day from the H
 - The JSON response/pagination shape and report latency.
 - A redacted response fixture that reconciles to the HERE dashboard total.
 
-The current integration targets Cost Management Usage API v2 at `https://usage.bam.api.here.com/v2`, using `GET /usage/realms/{realmId}` with day-level detail and `appId`, `billingTag`, and `project` groups. Update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its documented response schema.
+The current integration targets Cost Management Usage API v2 at `https://usage.bam.api.here.com/v2`, using `GET /usage/realms/{realmId}` with day-level detail and `appId`, `billingTag`, and `project` groups. The monitor reports HERE's `billableValue` when supplied, rather than raw `usageValue`, so data-service quantities align with billed units. Update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its documented response schema.
 
 ## GitHub Actions
 

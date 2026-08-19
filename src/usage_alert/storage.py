@@ -10,7 +10,7 @@ from .models import UsageRecord
 
 HEADERS = (
     "usage_date_utc", "metric", "quantity", "unit", "feature_id", "app_id",
-    "project_id", "billing_tag", "dimension_key", "source_retrieved_at_utc",
+    "project_id", "billing_tag", "category", "dimension_key", "source_retrieved_at_utc",
 )
 
 
@@ -24,7 +24,7 @@ def write_daily_records(records: list[UsageRecord], directory: Path) -> Path:
     output_path = directory / f"{next(iter(dates)).isoformat()}.csv"
     temporary_path = output_path.with_suffix(".tmp")
     with temporary_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=HEADERS)
+        writer = csv.DictWriter(handle, fieldnames=HEADERS, lineterminator="\n")
         writer.writeheader()
         for record in sorted(records, key=lambda item: (item.metric, item.dimension_key)):
             writer.writerow({
@@ -36,6 +36,7 @@ def write_daily_records(records: list[UsageRecord], directory: Path) -> Path:
                 "app_id": record.app_id or "",
                 "project_id": record.project_id or "",
                 "billing_tag": record.billing_tag or "",
+                "category": record.category or "",
                 "dimension_key": record.dimension_key,
                 "source_retrieved_at_utc": record.source_retrieved_at.isoformat(),
             })
@@ -57,6 +58,7 @@ def read_records(directory: Path) -> list[UsageRecord]:
                     project_id=row["project_id"] or None, billing_tag=row["billing_tag"] or None,
                     dimension_key=row["dimension_key"],
                     source_retrieved_at=datetime.fromisoformat(row["source_retrieved_at_utc"]),
+                    category=row.get("category") or None,
                 ))
     return records
 
