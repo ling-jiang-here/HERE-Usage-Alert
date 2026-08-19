@@ -60,7 +60,7 @@ Add these repository variables:
 - `HERE_USAGE_API_USAGE_PATH`
 - `ALERT_WEBHOOK_URL`
 
-It runs daily at 08:20 UTC and can be manually dispatched for a historical date. It commits only curated aggregate CSV and Markdown reports; raw API responses are not committed or uploaded. When an anomaly is found, it POSTs one JSON payload to `ALERT_WEBHOOK_URL` and creates or updates the corresponding GitHub Issue.
+It runs daily at 08:20 UTC and can be manually dispatched for a historical date. It commits only curated aggregate CSV and Markdown reports; raw API responses are not committed or uploaded. Every successful run POSTs one JSON event to `ALERT_WEBHOOK_URL`: `here_usage_healthy` when no anomaly meets the threshold, or `here_usage_anomaly` when one does. Anomaly runs also create or update the corresponding GitHub Issue.
 
 To verify online webhook delivery, manually run **HERE Usage Monitor** with `test_webhook` selected. The runner sends one clearly synthetic critical event (`metric: synthetic_webhook_test`) without querying HERE or opening a GitHub Issue.
 

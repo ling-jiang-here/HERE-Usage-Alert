@@ -25,3 +25,13 @@ class StorageAndReportTests(unittest.TestCase):
 
     def test_no_anomaly_report_is_explicit(self) -> None:
         self.assertIn("No anomaly met", render_daily_report([self.record], []))
+
+    def test_report_groups_totals_by_unit_and_metric(self) -> None:
+        storage_record = UsageRecord(
+            date(2026, 8, 18), "Data IO", 3_000, "GB-Months", "data-io", "storage-app",
+            None, None, '{"app_id":"storage-app","feature_id":"data-io"}', datetime.now(timezone.utc),
+        )
+        report = render_daily_report([self.record, storage_record], [])
+        self.assertIn("| transactions | transactions | 12,500.00 |", report)
+        self.assertIn("| GB-Months | Data IO | 3,000.00 |", report)
+        self.assertNotIn("Total quantity", report)

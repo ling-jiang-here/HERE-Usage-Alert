@@ -27,7 +27,8 @@ def main() -> int:
     load_dotenv(arguments.root / ".env")
     target_date = arguments.date or date.today() - timedelta(days=1)
     if arguments.test_webhook:
-        notified = notify_webhook([_synthetic_test_anomaly()], "synthetic-webhook-test")
+        test_anomaly = _synthetic_test_anomaly()
+        notified = notify_webhook([test_anomaly], [test_anomaly.record], "synthetic-webhook-test")
         print(f"Webhook smoke test sent: {'yes' if notified else 'no'}")
         return 0 if notified else 1
     if arguments.fetch:
@@ -49,10 +50,10 @@ def main() -> int:
     anomalies = detect_anomalies(all_records, target_date, config)
     report = render_daily_report(daily_records, anomalies)
     report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
-    notified = notify_webhook(anomalies, str(report_path))
+    notified = notify_webhook(anomalies, daily_records, str(report_path))
     print(f"Wrote report: {report_path}")
     print(f"Anomalies: {len(anomalies)}")
-    print(f"Webhook alert sent: {'yes' if notified else 'no'}")
+    print(f"Webhook event sent: {'yes' if notified else 'no'}")
     return 0
 
 

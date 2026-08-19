@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from pathlib import Path
 
 from .models import Anomaly, UsageRecord
@@ -7,17 +8,24 @@ from .models import Anomaly, UsageRecord
 
 def render_daily_report(records: list[UsageRecord], anomalies: list[Anomaly]) -> str:
     usage_date = records[0].usage_date.isoformat() if records else "unknown"
-    total = sum(record.quantity for record in records)
     lines = [
         f"# HERE Usage Report: {usage_date}",
         "",
         f"- Usage series: {len(records)}",
-        f"- Total quantity: {total:,.0f}",
         f"- Anomalies: {len(anomalies)}",
+        "",
+        "## Usage By Unit And Metric",
+        "",
+        "| Unit | Metric | Quantity |",
+        "| --- | --- | ---: |",
+    ]
+    for unit, metric, quantity in summarize_usage(records):
+        lines.append(f"| {unit} | {metric} | {quantity:,.2f} |")
+    lines.extend([
         "",
         "## Anomalies",
         "",
-    ]
+    ])
     if not anomalies:
         lines.append("No anomaly met the configured threshold.")
     else:
@@ -42,6 +50,16 @@ def render_daily_report(records: list[UsageRecord], anomalies: list[Anomaly]) ->
             "Hypotheses are unverified. Review deployments, retry behavior, and caching telemetry.",
         ])
     return "\n".join(lines) + "\n"
+
+
+def summarize_usage(records: list[UsageRecord]) -> list[tuple[str, str, float]]:
+    totals: dict[tuple[str, str], float] = defaultdict(float)
+    for record in records:
+        totals[(record.unit, record.metric)] += record.quantity
+    return [
+        (unit, metric, quantity)
+        for (unit, metric), quantity in sorted(totals.items(), key=lambda item: (item[0][0], item[0][1]))
+    ]
 
 
 def write_daily_report(contents: str, directory: Path, usage_date: str) -> Path:
