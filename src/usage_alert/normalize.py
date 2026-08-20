@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -22,7 +23,7 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
 
     timestamp = retrieved_at or datetime.now(timezone.utc)
     records: list[UsageRecord] = []
-    seen: set[tuple[date, str, str]] = set()
+    record_positions: dict[tuple[date, str, str], int] = {}
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             raise SchemaError(f"Record {index} is not an object")
@@ -48,9 +49,19 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
                 dimensions[key] = str(value).strip()
         dimension_key = json.dumps(dimensions, sort_keys=True, separators=(",", ":"))
         unique_key = (usage_date, metric, dimension_key)
-        if unique_key in seen:
-            raise SchemaError(f"Record {index} duplicates a daily usage series")
-        seen.add(unique_key)
+        category = _first_value(row, "category", default=None)
+        if unique_key in record_positions:
+            position = record_positions[unique_key]
+            existing = records[position]
+            if existing.unit != unit:
+                raise SchemaError(f"Record {index} duplicates a daily usage series with a conflicting unit")
+            records[position] = replace(
+                existing,
+                quantity=existing.quantity + quantity,
+                category=existing.category or category,
+            )
+            continue
+        record_positions[unique_key] = len(records)
         records.append(
             UsageRecord(
                 usage_date=usage_date,
@@ -63,7 +74,7 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
                 billing_tag=dimensions.get("billing_tag"),
                 dimension_key=dimension_key,
                 source_retrieved_at=timestamp,
-                category=_first_value(row, "category", default=None),
+                category=category,
             )
         )
     return records

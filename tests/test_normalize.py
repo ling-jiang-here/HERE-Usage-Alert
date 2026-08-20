@@ -35,3 +35,17 @@ class NormalizeTests(unittest.TestCase):
             "usageValue": 23_552_000, "billableValue": 0.0312, "valueDriver": "MB/S-Months",
         }]})
         self.assertEqual(0.0312, records[0].quantity)
+
+    def test_aggregates_duplicate_daily_usage_series(self) -> None:
+        records = normalize_records({"items": [
+            {
+                "usageDateTime": "2026-08-18T00:00:00", "name": "Routing", "billableValue": 125,
+                "valueDriver": "Transactions", "featureId": "routing", "appId": "fleet-prod",
+            },
+            {
+                "usageDateTime": "2026-08-18T12:00:00", "name": "Routing", "billableValue": 75,
+                "valueDriver": "Transactions", "featureId": "routing", "appId": "fleet-prod",
+            },
+        ]})
+        self.assertEqual(1, len(records))
+        self.assertEqual(200, records[0].quantity)
