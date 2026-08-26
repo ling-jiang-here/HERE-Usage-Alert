@@ -22,6 +22,7 @@
     "Isoline Routing": 2500,
     "Waypoints Sequence": 2500,
     "Tour Planning": 500,
+    "Fuel Prices": 0,
     "Traffic": 5000,
     "Advanced Traffic": 2500,
     "Traffic Raster Tile": 30000,

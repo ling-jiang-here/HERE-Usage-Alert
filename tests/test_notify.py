@@ -2,7 +2,8 @@ from datetime import date, datetime, timezone
 import unittest
 
 from usage_alert.models import Anomaly, UsageRecord
-from usage_alert.notify import build_healthy_webhook_payload, build_webhook_payload
+from usage_alert.notify import build_healthy_webhook_payload, build_quota_alert_payload, build_webhook_payload
+from usage_alert.quota import QuotaStatus
 
 
 class NotificationTests(unittest.TestCase):
@@ -13,9 +14,20 @@ class NotificationTests(unittest.TestCase):
         )
         anomaly = Anomaly(record, 10_000, 14, 30_000, 3.0, None, "critical")
         payload = build_webhook_payload([anomaly], "reports/2026-08-18.md")
-        self.assertEqual("here_usage_anomaly", payload["event"])
+        self.assertEqual("here_usage_alert", payload["event"])
         self.assertEqual("critical", payload["severity"])
         self.assertEqual(40_000, payload["anomalies"][0]["observed_quantity"])
+
+    def test_quota_alert_payload_includes_exceeded_services(self) -> None:
+        record = UsageRecord(
+            date(2026, 8, 18), "Fuel Prices", 1, "Transactions", "fuel-prices", "fleet-prod",
+            None, None, '{"app_id":"fleet-prod","feature_id":"fuel-prices"}', datetime.now(timezone.utc),
+        )
+        quota = QuotaStatus("Fuel Prices", 1, 0, float("inf"), "EXCEEDED")
+        payload = build_quota_alert_payload([record], [quota], "reports/2026-08-18.md")
+        self.assertEqual("here_usage_alert", payload["event"])
+        self.assertEqual(1, payload["quota_alert_count"])
+        self.assertEqual("Fuel Prices", payload["quota_alerts"][0]["metric"])
 
     def test_healthy_payload_confirms_successful_no_anomaly_run(self) -> None:
         record = UsageRecord(

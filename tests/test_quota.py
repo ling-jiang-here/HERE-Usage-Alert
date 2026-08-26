@@ -15,7 +15,7 @@ def record(metric: str, quantity: float, unit: str = "Transactions") -> UsageRec
 
 class QuotaTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.free_tiers = {"Autocomplete": 30_000, "Discover / Search": 5_000}
+        self.free_tiers = {"Autocomplete": 30_000, "Discover / Search": 5_000, "Fuel Prices": 0}
 
     def test_classifies_within_approaching_and_exceeded_services(self) -> None:
         statuses = evaluate_month_to_date(
@@ -54,3 +54,9 @@ class QuotaTests(unittest.TestCase):
         statuses = evaluate_month_to_date([first, second], 0.8, self.free_tiers, 20)
         self.assertEqual(16, statuses[-1].usage)
         self.assertEqual("APPROACHING", statuses[-1].status)
+
+    def test_zero_allowance_service_is_exceeded_by_any_usage(self) -> None:
+        statuses = evaluate_month_to_date([record("Fuel Prices", 1)], 0.8, self.free_tiers, 20)
+        fuel_prices = next(status for status in statuses if status.metric == "Fuel Prices")
+        self.assertEqual("EXCEEDED", fuel_prices.status)
+        self.assertEqual(float("inf"), fuel_prices.percentage)

@@ -53,3 +53,11 @@ class StorageAndReportTests(unittest.TestCase):
             "| Autocomplete | 24,000.00 Transactions | 30,000.00 Transactions | 80.0% | APPROACHING |",
             report,
         )
+
+    def test_report_shows_zero_allowance_service_as_exceeded(self) -> None:
+        quota = QuotaStatus("Fuel Prices", 1, 0, float("inf"), "EXCEEDED")
+        report = render_daily_report([self.record], [], [quota])
+        self.assertIn(
+            "| Fuel Prices | 1.00 Transactions | 0.00 Transactions | inf% | EXCEEDED |",
+            report,
+        )

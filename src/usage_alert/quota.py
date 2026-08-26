@@ -39,8 +39,16 @@ def evaluate_month_to_date(
         allowance = free_tiers.get(metric)
         if allowance is None:
             continue
-        percentage = usage / allowance
-        status = "EXCEEDED" if percentage >= 1 else "APPROACHING" if percentage >= approaching_threshold else "WITHIN_FREE_TIER"
+        if allowance == 0:
+            percentage = float("inf") if usage > 0 else 0.0
+            status = "EXCEEDED" if usage > 0 else "WITHIN_FREE_TIER"
+        else:
+            percentage = usage / allowance
+            status = (
+                "EXCEEDED" if percentage >= 1
+                else "APPROACHING" if percentage >= approaching_threshold
+                else "WITHIN_FREE_TIER"
+            )
         statuses.append(QuotaStatus(metric, usage, allowance, percentage, status, "Transactions"))
 
     data_io_totals: dict[str, float] = defaultdict(float)

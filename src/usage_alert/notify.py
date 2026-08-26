@@ -6,6 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .models import Anomaly, UsageRecord
+from .quota import QuotaStatus
 from .report import summarize_usage
 
 
@@ -13,12 +14,16 @@ class NotificationError(RuntimeError):
     """Raised when an alert webhook cannot accept a notification."""
 
 
-def build_webhook_payload(anomalies: list[Anomaly], report_path: str) -> dict[str, object]:
+def build_webhook_payload(
+    anomalies: list[Anomaly], report_path: str, quota_alerts: list[QuotaStatus] | None = None
+) -> dict[str, object]:
+    quota_alerts = quota_alerts or []
     return {
-        "event": "here_usage_anomaly",
+        "event": "here_usage_alert",
         "severity": "critical" if any(item.severity == "critical" for item in anomalies) else "warning",
         "usage_date_utc": anomalies[0].record.usage_date.isoformat(),
         "anomaly_count": len(anomalies),
+        "quota_alert_count": len(quota_alerts),
         "report_path": report_path,
         "anomalies": [
             {
@@ -35,7 +40,42 @@ def build_webhook_payload(anomalies: list[Anomaly], report_path: str) -> dict[st
             }
             for item in anomalies
         ],
+        "quota_alerts": [
+            {
+                "metric": item.metric,
+                "usage": item.usage,
+                "allowance": item.allowance,
+                "percentage": item.percentage,
+                "status": item.status,
+                "unit": item.unit,
+            }
+            for item in quota_alerts
+        ],
         "note": "Root-cause hypotheses require corroboration from deployment and application telemetry.",
+    }
+
+
+def build_quota_alert_payload(records: list[UsageRecord], quota_alerts: list[QuotaStatus], report_path: str) -> dict[str, object]:
+    return {
+        "event": "here_usage_alert",
+        "severity": "warning",
+        "usage_date_utc": records[0].usage_date.isoformat(),
+        "anomaly_count": 0,
+        "quota_alert_count": len(quota_alerts),
+        "report_path": report_path,
+        "anomalies": [],
+        "quota_alerts": [
+            {
+                "metric": item.metric,
+                "usage": item.usage,
+                "allowance": item.allowance,
+                "percentage": item.percentage,
+                "status": item.status,
+                "unit": item.unit,
+            }
+            for item in quota_alerts
+        ],
+        "note": "Configured free-tier usage limits were exceeded.",
     }
 
 
@@ -55,12 +95,21 @@ def build_healthy_webhook_payload(records: list[UsageRecord], report_path: str) 
     }
 
 
-def notify_webhook(anomalies: list[Anomaly], records: list[UsageRecord], report_path: str) -> bool:
+def notify_webhook(
+    anomalies: list[Anomaly], records: list[UsageRecord], report_path: str,
+    quota_alerts: list[QuotaStatus] | None = None,
+) -> bool:
     """POST a success or anomaly event after each completed monitoring run."""
     webhook_url = os.getenv("ALERT_WEBHOOK_URL", "").strip()
     if not webhook_url:
         return False
-    payload = build_webhook_payload(anomalies, report_path) if anomalies else build_healthy_webhook_payload(records, report_path)
+    quota_alerts = quota_alerts or []
+    if anomalies:
+        payload = build_webhook_payload(anomalies, report_path, quota_alerts)
+    elif quota_alerts:
+        payload = build_quota_alert_payload(records, quota_alerts, report_path)
+    else:
+        payload = build_healthy_webhook_payload(records, report_path)
     body = json.dumps(payload).encode("utf-8")
     request = Request(webhook_url, data=body, method="POST", headers={"Content-Type": "application/json"})
     try:

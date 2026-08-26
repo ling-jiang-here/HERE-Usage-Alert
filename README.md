@@ -1,6 +1,6 @@
 # HERE Usage Alert
 
-Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2, writes a local Markdown report and CSV aggregate, posts a webhook event, and opens or updates a GitHub Issue when it detects an abnormal spike. Reports and data files stay local/ephemeral; they are never committed to the repository (`reports/` and `data/` are git-ignored).
+Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2 and checks for abnormal spikes. Reports and CSV data are written only for local `--input` runs; live `--fetch` runs keep data in memory and do not upload artifacts, commit files, or create GitHub issues.
 
 ## Quick Start
 
@@ -31,14 +31,14 @@ The client authenticates with OAuth client credentials and never logs the client
 
 Two workflows run the same CLI on a schedule and can also be dispatched manually:
 
-- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. Always writes a report, including a healthy event when no anomaly is found.
-- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days, and only posts a webhook event/issue when an anomaly is found. Because each run starts from a fresh checkout, hourly baseline history does not persist across runs unless the workflow restores it from another store (for example, a workflow cache or artifact download step) first.
+- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. In live mode it analyzes in memory and only sends a webhook when anomalies are found.
+- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days and only sends a webhook when an anomaly is found.
 
 Add these repository secrets: `HERE_USAGE_API_CLIENT_ID`, `HERE_USAGE_API_CLIENT_SECRET`.
 
 Add these repository variables: `HERE_USAGE_API_BASE_URL`, `HERE_REALM_ID`, `HERE_OAUTH_TOKEN_URL`, `HERE_OAUTH_SCOPE` (can be empty), `HERE_USAGE_API_USAGE_PATH`, `ALERT_WEBHOOK_URL`.
 
-To verify webhook delivery without querying HERE or opening an issue, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
+To verify webhook delivery without querying HERE, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
 
 ## Detection and Alerts
 

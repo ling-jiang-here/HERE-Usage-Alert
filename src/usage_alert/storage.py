@@ -94,9 +94,3 @@ def write_hourly_records(records: list[UsageRecord], directory: Path) -> Path:
     os.replace(temporary_path, output_path)
     return output_path
 
-
-def write_raw_artifact(payload: str, directory: Path, usage_date: str) -> Path:
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"usage-{usage_date}.json"
-    path.write_text(payload, encoding="utf-8")
-    return path

@@ -8,7 +8,7 @@ import os
 import secrets
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -33,12 +33,26 @@ class HereUsageClient:
             f"{usage_date.isoformat()}T00:00:00", f"{usage_date.isoformat()}T23:59:59", "day"
         )
 
+    def fetch_usage_range(self, start_date: date, end_date: date) -> str:
+        return self._fetch_usage_window(
+            f"{start_date.isoformat()}T00:00:00", f"{end_date.isoformat()}T23:59:59", "day"
+        )
+
     def fetch_usage_hour(self, usage_hour_utc: datetime) -> str:
         if usage_hour_utc.tzinfo is None:
             usage_hour_utc = usage_hour_utc.replace(tzinfo=timezone.utc)
         usage_hour_utc = usage_hour_utc.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
         start = usage_hour_utc.isoformat().replace("+00:00", "Z")
         end = (usage_hour_utc.replace(minute=59, second=59)).isoformat().replace("+00:00", "Z")
+        return self._fetch_usage_window(start, end, "hour")
+
+    def fetch_hourly_history(self, target_hour_utc: datetime, history_days: int) -> str:
+        if target_hour_utc.tzinfo is None:
+            target_hour_utc = target_hour_utc.replace(tzinfo=timezone.utc)
+        target_hour_utc = target_hour_utc.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        start_hour = target_hour_utc - timedelta(days=history_days)
+        start = start_hour.isoformat().replace("+00:00", "Z")
+        end = target_hour_utc.replace(minute=59, second=59).isoformat().replace("+00:00", "Z")
         return self._fetch_usage_window(start, end, "hour")
 
     def _fetch_usage_window(self, start: str, end: str, detail_level: str) -> str:
