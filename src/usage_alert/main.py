@@ -52,15 +52,22 @@ def main() -> int:
         prune_hourly_files(hourly_directory, target_hour, max(config.history_days, config.data_retention_days), ".csv")
         all_records = history + hourly_records
         anomalies = detect_hourly_anomalies(all_records, target_hour, config)
-        if not anomalies:
+        threshold, free_tiers, data_io_free_gb = load_free_tiers(arguments.root / "config" / "free_tiers.json")
+        month_records = [
+            record for record in all_records
+            if record.usage_date.year == target_hour.year and record.usage_date.month == target_hour.month
+        ]
+        quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
+        quota_alerts = [quota for quota in quota_statuses if quota.status == "EXCEEDED"]
+        if not anomalies and not quota_alerts:
             print(f"No hourly anomaly for {target_hour.isoformat()}; no report written.")
             return 0
-        report = render_hourly_report(hourly_records, anomalies)
+        report = render_hourly_report(hourly_records, anomalies, quota_alerts)
         report_path = write_hourly_report(report, arguments.root / "reports", target_hour)
         prune_hourly_files(arguments.root / "reports" / "hourly", target_hour, config.report_retention_days, ".md")
         report_reference = str(report_path)
         print(f"Wrote hourly anomaly report: {report_path}")
-        notified = notify_webhook(anomalies, hourly_records, report_reference)
+        notified = notify_webhook(anomalies, hourly_records, report_reference, quota_alerts)
         print(f"Webhook event sent: {'yes' if notified else 'no'}")
         return 0
     config = load_detection_config(arguments.root / "config" / "thresholds.json")

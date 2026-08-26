@@ -101,9 +101,12 @@ def write_daily_report(contents: str, directory: Path, usage_date: str) -> Path:
     return output_path
 
 
-def render_hourly_report(records: list[UsageRecord], anomalies: list[Anomaly]) -> str:
+def render_hourly_report(
+    records: list[UsageRecord], anomalies: list[Anomaly], quota_alerts: list[QuotaStatus] | None = None
+) -> str:
     usage_hour = records[0].usage_hour_utc.isoformat() if records and records[0].usage_hour_utc else "unknown"
     lines = [f"# HERE Usage Anomaly: {usage_hour}", "", f"- Anomalies: {len(anomalies)}", ""]
+    quota_alerts = quota_alerts or []
     for anomaly in anomalies:
         lines.append(
             f"- **{anomaly.severity.upper()}** {anomaly.record.metric} "
@@ -111,6 +114,14 @@ def render_hourly_report(records: list[UsageRecord], anomalies: list[Anomaly]) -
             f"{anomaly.record.quantity:,.2f} vs {anomaly.baseline_median:,.2f} baseline "
             f"({anomaly.percentage_increase:+.0%})"
         )
+    if quota_alerts:
+        lines.extend(["", "## Free-Tier Alerts", ""])
+        for quota in quota_alerts:
+            percentage = "inf%" if quota.percentage == float("inf") else f"{quota.percentage:.1%}"
+            lines.append(
+                f"- **{quota.status}** {quota.metric}: {format_quantity(quota.usage)} {quota.unit} "
+                f"against {format_quantity(quota.allowance or 0)} {quota.unit} ({percentage})"
+            )
     return "\n".join(lines) + "\n"
 
 

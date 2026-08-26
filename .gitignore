@@ -4,9 +4,9 @@
 # Raw API responses can contain sensitive operational data.
 artifacts/
 
-# Generated reports and curated usage data must stay local, not in the repo.
-reports/
+# Generated usage data and reports stay local.
 data/
+reports/
 
 # Python bytecode
 __pycache__/
