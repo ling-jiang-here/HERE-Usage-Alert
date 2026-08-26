@@ -75,6 +75,7 @@ class MainTests(unittest.TestCase):
             ):
                 with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
+                        notify_webhook.return_value = True
                         with patch(
                             "sys.argv",
                             [
@@ -94,7 +95,7 @@ class MainTests(unittest.TestCase):
             self.assertFalse((root / "reports" / "2026-05-19.md").exists())
             self.assertTrue((root / "reports" / "2026-06-25.md").exists())
             self.assertFalse((root / "artifacts").exists())
-            notify_webhook.assert_not_called()
+            notify_webhook.assert_called_once_with([], unittest.mock.ANY, unittest.mock.ANY, [])
 
     def test_hourly_fetch_mode_skips_empty_completed_hour(self) -> None:
         with TemporaryDirectory() as temporary_directory:
@@ -142,6 +143,77 @@ class MainTests(unittest.TestCase):
             self.assertFalse((root / "data").exists())
             self.assertFalse((root / "reports").exists())
             notify_webhook.assert_not_called()
+
+    def test_hourly_fetch_mode_sends_healthy_webhook_when_completed_hour_has_no_alerts(self) -> None:
+        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        payload = {
+            "items": [
+                {
+                    "usageDateTime": target_hour.isoformat().replace("+00:00", "Z"),
+                    "name": "Autocomplete",
+                    "billableValue": 10,
+                    "valueDriver": "Transactions",
+                    "featureId": "autocomplete",
+                    "appId": "fleet-prod",
+                }
+            ]
+        }
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "config").mkdir()
+            (root / "config" / "thresholds.json").write_text(
+                json.dumps(
+                    {
+                        "history_days": 30,
+                        "data_retention_days": 45,
+                        "report_retention_days": 60,
+                        "minimum_baseline_days": 14,
+                        "minimum_absolute_increase": 1000,
+                        "percentage_increase_threshold": 0.5,
+                        "robust_z_score_threshold": 3.5,
+                        "severity": {"warning_percentage": 0.5, "critical_percentage": 2.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "config" / "free_tiers.json").write_text(
+                json.dumps(
+                    {
+                        "approaching_threshold": 0.8,
+                        "data_io_free_gb_months": 20,
+                        "transaction_free_tiers": {"Autocomplete": 30_000},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "HERE_USAGE_API_BASE_URL": "https://example.test/v2",
+                    "HERE_REALM_ID": "example",
+                    "HERE_USAGE_API_CLIENT_ID": "client-id",
+                    "HERE_USAGE_API_CLIENT_SECRET": "client-secret",
+                    "HERE_USAGE_API_USAGE_PATH": "/usage/realms/{realmId}",
+                },
+                clear=False,
+            ):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage_hour", return_value=json.dumps(payload)):
+                    with patch("usage_alert.main.notify_webhook") as notify_webhook:
+                        notify_webhook.return_value = True
+                        with patch(
+                            "sys.argv",
+                            [
+                                "usage_alert.main",
+                                "--fetch",
+                                "--hourly",
+                                "--root",
+                                str(root),
+                            ],
+                        ):
+                            self.assertEqual(0, main())
+            self.assertTrue((root / "data" / "hourly" / f"{target_hour.strftime('%Y-%m-%dT%H')}Z.csv").exists())
+            self.assertFalse((root / "reports").exists())
+            notify_webhook.assert_called_once_with([], unittest.mock.ANY, target_hour.isoformat())
 
     def test_hourly_fetch_mode_alerts_for_zero_free_tier_usage(self) -> None:
         target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
@@ -198,6 +270,7 @@ class MainTests(unittest.TestCase):
             ):
                 with patch("usage_alert.main.HereUsageClient.fetch_usage_hour", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
+                        notify_webhook.return_value = True
                         with patch(
                             "sys.argv",
                             [
@@ -288,6 +361,7 @@ class MainTests(unittest.TestCase):
             ):
                 with patch("usage_alert.main.HereUsageClient.fetch_usage_hour", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
+                        notify_webhook.return_value = True
                         with patch(
                             "sys.argv",
                             [

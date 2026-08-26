@@ -33,8 +33,8 @@ Daily and hourly usage data are generated the same way for local runs and schedu
 
 Two workflows run the same CLI on a schedule and can also be dispatched manually:
 
-- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook only when alerts are found.
-- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook only when an anomaly or quota overage is found.
+- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for both alerting and healthy completion events.
+- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for alerting and healthy completion events. It still skips markdown report generation when the completed hour is healthy.
 
 Add these repository secrets: `HERE_USAGE_API_CLIENT_ID`, `HERE_USAGE_API_CLIENT_SECRET`.
 

@@ -60,7 +60,9 @@ def main() -> int:
         quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
         quota_alerts = [quota for quota in quota_statuses if quota.status == "EXCEEDED"]
         if not anomalies and not quota_alerts:
+            notified = notify_webhook([], hourly_records, target_hour.isoformat())
             print(f"No hourly anomaly for {target_hour.isoformat()}; no report written.")
+            print(f"Webhook event sent: {'yes' if notified else 'no'}")
             return 0
         report = render_hourly_report(hourly_records, anomalies, quota_alerts)
         report_path = write_hourly_report(report, arguments.root / "reports", target_hour)
@@ -100,7 +102,7 @@ def main() -> int:
     report_reference = str(report_path)
     print(f"Wrote report: {report_path}")
     print(f"Anomalies: {len(anomalies)}")
-    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts) if anomalies or quota_alerts else False
+    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts)
     print(f"Webhook event sent: {'yes' if notified else 'no'}")
     return 0
 
