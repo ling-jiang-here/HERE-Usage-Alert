@@ -6,10 +6,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: here-usage-monitor-hourly
+  group: here-usage-monitor-generated-artifacts
   cancel-in-progress: false
 
 jobs:
@@ -21,13 +21,30 @@ jobs:
       HERE_USAGE_API_CLIENT_ID: ${{ secrets.HERE_USAGE_API_CLIENT_ID }}
       HERE_USAGE_API_CLIENT_SECRET: ${{ secrets.HERE_USAGE_API_CLIENT_SECRET }}
       HERE_OAUTH_TOKEN_URL: ${{ vars.HERE_OAUTH_TOKEN_URL }}
-      HERE_OAUTH_SCOPE: ${{ vars.HERE_OAUTH_SCOPE }}
       HERE_USAGE_API_USAGE_PATH: ${{ vars.HERE_USAGE_API_USAGE_PATH }}
       ALERT_WEBHOOK_URL: ${{ vars.ALERT_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Check completed hour
         run: PYTHONPATH=src python -m usage_alert.main --fetch --hourly
+      - name: Commit generated usage outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for path in data reports; do
+            if [ -e "$path" ]; then
+              git add -A "$path"
+            fi
+          done
+          if git diff --cached --quiet; then
+            echo "No generated usage changes to commit."
+            exit 0
+          fi
+          git commit -m "Update usage data and reports"
+          git pull --rebase origin "${{ github.ref_name }}"
+          git push origin HEAD:"${{ github.ref_name }}"

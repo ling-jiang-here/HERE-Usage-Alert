@@ -1,6 +1,6 @@
 # HERE Usage Alert
 
-Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2, stores local analysis data, writes local reports, and checks for abnormal spikes. Nothing is committed, uploaded, or pushed by the automation workflows.
+Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2, stores analysis data under `data/`, writes reports under `reports/`, and checks for abnormal spikes. The GitHub Actions workflows commit those generated files back to the repository so the history stays available for traffic analysis.
 
 ## Quick Start
 
@@ -27,18 +27,18 @@ Scheduled, organization-wide HERE usage monitoring with no hosted database or da
 
 The client authenticates with OAuth client credentials and never logs the client secret or access token. It targets `GET /usage/realms/{realmId}` at `https://usage.bam.api.here.com/v2` with day-level detail and `appId`, `billingTag`, and `project` groups; update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its response schema.
 
-Daily and hourly usage data are kept locally for analysis. The project prunes older files automatically: reports are kept for the last 90 days, and local analysis data is retained only as long as needed for the configured history window, with a 90-day floor.
+Daily and hourly usage data are generated the same way for local runs and scheduled runs. The project prunes older files automatically: reports are kept for the last 90 days, and analysis data is retained only as long as needed for the configured history window, with a 90-day floor.
 
 ## GitHub Actions
 
 Two workflows run the same CLI on a schedule and can also be dispatched manually:
 
-- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It stores local daily analysis files and sends a webhook only when alerts are found.
-- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days, stores local hourly analysis files, and sends a webhook only when an anomaly is found.
+- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook only when alerts are found.
+- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook only when an anomaly or quota overage is found.
 
 Add these repository secrets: `HERE_USAGE_API_CLIENT_ID`, `HERE_USAGE_API_CLIENT_SECRET`.
 
-Add these repository variables: `HERE_USAGE_API_BASE_URL`, `HERE_REALM_ID`, `HERE_OAUTH_TOKEN_URL`, `HERE_OAUTH_SCOPE` (can be empty), `HERE_USAGE_API_USAGE_PATH`, `ALERT_WEBHOOK_URL`.
+Add these repository variables: `HERE_USAGE_API_BASE_URL`, `HERE_REALM_ID`, `HERE_OAUTH_TOKEN_URL`, `HERE_USAGE_API_USAGE_PATH`, `ALERT_WEBHOOK_URL`.
 
 To verify webhook delivery without querying HERE, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
 

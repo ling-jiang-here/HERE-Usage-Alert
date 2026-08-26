@@ -4,10 +4,6 @@
 # Raw API responses can contain sensitive operational data.
 artifacts/
 
-# Generated usage data and reports stay local.
-data/
-reports/
-
 # Python bytecode
 __pycache__/
 *.py[cod]
