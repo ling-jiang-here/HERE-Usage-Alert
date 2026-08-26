@@ -16,7 +16,7 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 concurrency:
@@ -69,13 +69,6 @@ jobs:
             } else {
               await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['here-usage-alert'] });
             }
-      - name: Commit curated data and report
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/curated reports
-          git diff --cached --quiet || git commit -m "chore: record HERE usage"
-          git push
       - name: Upload redacted run output
         if: always()
         uses: actions/upload-artifact@v6

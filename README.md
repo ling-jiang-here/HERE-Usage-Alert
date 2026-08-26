@@ -53,7 +53,11 @@ Add these repository variables:
 - `HERE_USAGE_API_USAGE_PATH`
 - `ALERT_WEBHOOK_URL`
 
-It runs daily at 08:20 UTC and can be manually dispatched for a historical date. It commits only curated aggregate CSV and Markdown reports; raw API responses are not committed or uploaded. Every successful run POSTs one JSON event to `ALERT_WEBHOOK_URL`: `here_usage_healthy` when no anomaly meets the threshold, or `here_usage_anomaly` when one does. Anomaly runs also create or update the corresponding GitHub Issue.
+The daily workflow runs at 08:20 UTC and preserves the daily report, including a healthy event when no anomaly is found. The separate [hourly workflow](.github/workflows/usage-monitor-hourly.yml) runs at 20 minutes past every hour, checks the completed UTC hour against the same hour on prior days, and creates a webhook event and issue only when an anomaly is found.
+
+Reports and curated/hourly data are never committed or pushed to the repository; `reports/` and `data/` are git-ignored. Each GitHub Actions run only has whatever history exists in that run's fresh checkout, so hourly baseline history does not persist across separate CI runs unless the workflow is changed to restore it from another store (for example, a workflow cache or artifact download step) before analysis.
+
+Both workflows can be manually dispatched. The daily workflow accepts a historical date; the hourly workflow checks the most recently completed UTC hour.
 
 To verify online webhook delivery, manually run **HERE Usage Monitor** with `test_webhook` selected. The runner sends one clearly synthetic critical event (`metric: synthetic_webhook_test`) without querying HERE or opening a GitHub Issue.
 
