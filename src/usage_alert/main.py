@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from .storage import prune_daily_files, prune_hourly_files, read_records, write_
 def main() -> int:
     parser = argparse.ArgumentParser(description="Monitor HERE organization usage for daily anomalies.")
     parser.add_argument("--date", type=date.fromisoformat, help="Completed UTC usage date (YYYY-MM-DD).")
-    parser.add_argument("--hourly", action="store_true", help="Check the completed UTC hour and report anomalies only.")
+    parser.add_argument("--hourly", action="store_true", help="Check usage from the last 65 minutes and report anomalies only.")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--input", type=Path, help="Recorded JSON response using the temporary fixture contract.")
     source.add_argument("--fetch", action="store_true", help="Fetch a live response using the configured HERE client.")
@@ -34,17 +35,22 @@ def main() -> int:
         print(f"Webhook smoke test sent: {'yes' if notified else 'no'}")
         return 0 if notified else 1
     if arguments.hourly:
-        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        window_end = datetime.now(timezone.utc).replace(microsecond=0)
+        window_start = window_end - timedelta(minutes=65)
+        target_hour = window_end.replace(minute=0, second=0, microsecond=0)
         config = load_detection_config(arguments.root / "config" / "thresholds.json")
         if arguments.fetch:
-            raw_payload = HereUsageClient().fetch_usage_hour(target_hour)
+            raw_payload = HereUsageClient().fetch_usage_window(window_start, window_end)
             payload = json.loads(raw_payload)
         else:
             payload = json.loads(arguments.input.read_text(encoding="utf-8"))
         records = normalize_records(payload, preserve_hours=True)
-        hourly_records = [record for record in records if record.usage_hour_utc == target_hour]
+        hourly_records = _aggregate_hourly_window_records(records, target_hour)
         if not hourly_records:
-            print(f"No hourly usage records for {target_hour.isoformat()}; no report written.")
+            print(
+                "No hourly usage records from "
+                f"{window_start.isoformat()} to {window_end.isoformat()}; no report written."
+            )
             return 0
         hourly_directory = arguments.root / "data" / "hourly"
         history = [record for record in read_records(hourly_directory) if record.usage_hour_utc != target_hour]
@@ -122,6 +128,29 @@ def _synthetic_test_anomaly():
         dimension_key='{"app_id":"github-actions","feature_id":"synthetic"}',
         source_retrieved_at=datetime.now(timezone.utc),
     )
+
+
+def _aggregate_hourly_window_records(records: list[UsageRecord], target_hour: datetime) -> list[UsageRecord]:
+    target_hour = target_hour.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    aggregated: list[UsageRecord] = []
+    record_positions: dict[tuple[str, str, str], int] = {}
+    for record in records:
+        if record.usage_hour_utc is None:
+            continue
+        window_record = replace(record, usage_date=target_hour.date(), usage_hour_utc=target_hour)
+        unique_key = (window_record.metric, window_record.dimension_key, window_record.unit)
+        if unique_key in record_positions:
+            position = record_positions[unique_key]
+            existing = aggregated[position]
+            aggregated[position] = replace(
+                existing,
+                quantity=existing.quantity + window_record.quantity,
+                category=existing.category or window_record.category,
+            )
+            continue
+        record_positions[unique_key] = len(aggregated)
+        aggregated.append(window_record)
+    return aggregated
     return Anomaly(
         record=record,
         baseline_median=100,

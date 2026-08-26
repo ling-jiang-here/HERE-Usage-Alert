@@ -55,9 +55,9 @@ class StorageAndReportTests(unittest.TestCase):
         )
 
     def test_report_shows_zero_allowance_service_as_exceeded(self) -> None:
-        quota = QuotaStatus("Fuel Prices", 1, 0, float("inf"), "EXCEEDED")
+        quota = QuotaStatus("Fuel Prices", 1, 0, None, "EXCEEDED")
         report = render_daily_report([self.record], [], [quota])
         self.assertIn(
-            "| Fuel Prices | 1.00 Transactions | 0.00 Transactions | inf% | EXCEEDED |",
+            "| Fuel Prices | 1.00 Transactions | 0.00 Transactions | N/A | EXCEEDED |",
             report,
         )

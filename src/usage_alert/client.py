@@ -41,6 +41,19 @@ class HereUsageClient:
         end = (usage_hour_utc.replace(minute=59, second=59)).isoformat().replace("+00:00", "Z")
         return self._fetch_usage_window(start, end, "hour")
 
+    def fetch_usage_window(self, start_utc: datetime, end_utc: datetime) -> str:
+        if start_utc.tzinfo is None:
+            start_utc = start_utc.replace(tzinfo=timezone.utc)
+        if end_utc.tzinfo is None:
+            end_utc = end_utc.replace(tzinfo=timezone.utc)
+        start_utc = start_utc.astimezone(timezone.utc).replace(microsecond=0)
+        end_utc = end_utc.astimezone(timezone.utc).replace(microsecond=0)
+        if start_utc >= end_utc:
+            raise HereClientError("HERE usage window start must be before end.")
+        start = start_utc.isoformat().replace("+00:00", "Z")
+        end = end_utc.isoformat().replace("+00:00", "Z")
+        return self._fetch_usage_window(start, end, "hour")
+
     def _fetch_usage_window(self, start: str, end: str, detail_level: str) -> str:
         if not self.usage_path.startswith("/") or "{realmId}" not in self.usage_path:
             raise HereClientError(

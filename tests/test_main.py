@@ -127,7 +127,7 @@ class MainTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                with patch("usage_alert.main.HereUsageClient.fetch_usage_hour", return_value=json.dumps({"items": []})):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage_window", return_value=json.dumps({"items": []})) as fetch_usage_window:
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
                         with patch(
                             "sys.argv",
@@ -143,9 +143,11 @@ class MainTests(unittest.TestCase):
             self.assertFalse((root / "data").exists())
             self.assertFalse((root / "reports").exists())
             notify_webhook.assert_not_called()
+            window_start, window_end = fetch_usage_window.call_args.args
+            self.assertEqual(timedelta(minutes=65), window_end - window_start)
 
     def test_hourly_fetch_mode_sends_healthy_webhook_when_completed_hour_has_no_alerts(self) -> None:
-        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
         payload = {
             "items": [
                 {
@@ -197,7 +199,7 @@ class MainTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                with patch("usage_alert.main.HereUsageClient.fetch_usage_hour", return_value=json.dumps(payload)):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage_window", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
                         notify_webhook.return_value = True
                         with patch(
@@ -216,7 +218,7 @@ class MainTests(unittest.TestCase):
             notify_webhook.assert_called_once_with([], unittest.mock.ANY, target_hour.isoformat())
 
     def test_hourly_fetch_mode_alerts_for_zero_free_tier_usage(self) -> None:
-        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
         payload = {
             "items": [
                 {
@@ -268,7 +270,7 @@ class MainTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                with patch("usage_alert.main.HereUsageClient.fetch_usage_hour", return_value=json.dumps(payload)):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage_window", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
                         notify_webhook.return_value = True
                         with patch(
@@ -287,7 +289,7 @@ class MainTests(unittest.TestCase):
             notify_webhook.assert_called_once()
 
     def test_hourly_fetch_mode_alerts_when_month_to_date_usage_exceeds_nonzero_free_tier(self) -> None:
-        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
         payload = {
             "items": [
                 {
@@ -359,7 +361,7 @@ class MainTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                with patch("usage_alert.main.HereUsageClient.fetch_usage_hour", return_value=json.dumps(payload)):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage_window", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
                         notify_webhook.return_value = True
                         with patch(

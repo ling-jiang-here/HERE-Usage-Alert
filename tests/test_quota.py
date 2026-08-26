@@ -59,4 +59,4 @@ class QuotaTests(unittest.TestCase):
         statuses = evaluate_month_to_date([record("Fuel Prices", 1)], 0.8, self.free_tiers, 20)
         fuel_prices = next(status for status in statuses if status.metric == "Fuel Prices")
         self.assertEqual("EXCEEDED", fuel_prices.status)
-        self.assertEqual(float("inf"), fuel_prices.percentage)
+        self.assertIsNone(fuel_prices.percentage)

@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Check completed hour
+      - name: Check last 65 minutes
         run: PYTHONPATH=src python -m usage_alert.main --fetch --hourly
       - name: Commit generated usage outputs
         run: |

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -45,7 +46,7 @@ def build_webhook_payload(
                 "metric": item.metric,
                 "usage": item.usage,
                 "allowance": item.allowance,
-                "percentage": item.percentage,
+                "percentage": _finite_or_none(item.percentage),
                 "status": item.status,
                 "unit": item.unit,
             }
@@ -69,7 +70,7 @@ def build_quota_alert_payload(records: list[UsageRecord], quota_alerts: list[Quo
                 "metric": item.metric,
                 "usage": item.usage,
                 "allowance": item.allowance,
-                "percentage": item.percentage,
+                "percentage": _finite_or_none(item.percentage),
                 "status": item.status,
                 "unit": item.unit,
             }
@@ -110,7 +111,7 @@ def notify_webhook(
         payload = build_quota_alert_payload(records, quota_alerts, report_path)
     else:
         payload = build_healthy_webhook_payload(records, report_path)
-    body = json.dumps(payload).encode("utf-8")
+    body = json.dumps(payload, allow_nan=False).encode("utf-8")
     request = Request(webhook_url, data=body, method="POST", headers={"Content-Type": "application/json"})
     try:
         with urlopen(request, timeout=15) as response:
@@ -119,3 +120,9 @@ def notify_webhook(
     except (HTTPError, URLError) as error:
         raise NotificationError("Alert webhook request failed.") from error
     return True
+
+
+def _finite_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return value if math.isfinite(value) else None

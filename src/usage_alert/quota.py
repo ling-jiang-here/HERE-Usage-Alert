@@ -40,7 +40,7 @@ def evaluate_month_to_date(
         if allowance is None:
             continue
         if allowance == 0:
-            percentage = float("inf") if usage > 0 else 0.0
+            percentage = None if usage > 0 else 0.0
             status = "EXCEEDED" if usage > 0 else "WITHIN_FREE_TIER"
         else:
             percentage = usage / allowance

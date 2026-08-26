@@ -117,7 +117,7 @@ def render_hourly_report(
     if quota_alerts:
         lines.extend(["", "## Free-Tier Alerts", ""])
         for quota in quota_alerts:
-            percentage = "inf%" if quota.percentage == float("inf") else f"{quota.percentage:.1%}"
+            percentage = f"{quota.percentage:.1%}" if quota.percentage is not None else "N/A"
             lines.append(
                 f"- **{quota.status}** {quota.metric}: {format_quantity(quota.usage)} {quota.unit} "
                 f"against {format_quantity(quota.allowance or 0)} {quota.unit} ({percentage})"

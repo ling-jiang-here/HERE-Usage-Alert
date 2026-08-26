@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+import json
 import unittest
 
 from usage_alert.models import Anomaly, UsageRecord
@@ -23,11 +24,23 @@ class NotificationTests(unittest.TestCase):
             date(2026, 8, 18), "Fuel Prices", 1, "Transactions", "fuel-prices", "fleet-prod",
             None, None, '{"app_id":"fleet-prod","feature_id":"fuel-prices"}', datetime.now(timezone.utc),
         )
-        quota = QuotaStatus("Fuel Prices", 1, 0, float("inf"), "EXCEEDED")
+        quota = QuotaStatus("Fuel Prices", 1, 0, None, "EXCEEDED")
         payload = build_quota_alert_payload([record], [quota], "reports/2026-08-18.md")
         self.assertEqual("here_usage_alert", payload["event"])
         self.assertEqual(1, payload["quota_alert_count"])
         self.assertEqual("Fuel Prices", payload["quota_alerts"][0]["metric"])
+        self.assertIsNone(payload["quota_alerts"][0]["percentage"])
+        json.dumps(payload, allow_nan=False)
+
+    def test_quota_alert_payload_sanitizes_non_finite_percentage(self) -> None:
+        record = UsageRecord(
+            date(2026, 8, 18), "Fuel Prices", 1, "Transactions", "fuel-prices", "fleet-prod",
+            None, None, '{"app_id":"fleet-prod","feature_id":"fuel-prices"}', datetime.now(timezone.utc),
+        )
+        quota = QuotaStatus("Fuel Prices", 1, 0, float("inf"), "EXCEEDED")
+        payload = build_quota_alert_payload([record], [quota], "reports/2026-08-18.md")
+        self.assertIsNone(payload["quota_alerts"][0]["percentage"])
+        json.dumps(payload, allow_nan=False)
 
     def test_healthy_payload_confirms_successful_no_anomaly_run(self) -> None:
         record = UsageRecord(
