@@ -17,6 +17,7 @@ class UsageRecord:
     dimension_key: str
     source_retrieved_at: datetime
     category: str | None = None
+    usage_hour_utc: datetime | None = None
 
 
 @dataclass(frozen=True)

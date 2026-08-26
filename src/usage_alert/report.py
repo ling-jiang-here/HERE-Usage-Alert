@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 from .models import Anomaly, UsageRecord
@@ -11,10 +12,11 @@ def render_daily_report(
     records: list[UsageRecord], anomalies: list[Anomaly], quota_statuses: list[QuotaStatus] | None = None
 ) -> str:
     usage_date = records[0].usage_date.isoformat() if records else "unknown"
+    usage_summary = summarize_usage(records)
     lines = [
         f"# HERE Usage Report: {usage_date}",
         "",
-        f"- Usage series: {len(records)}",
+        f"- Usage series: {len(usage_summary)}",
         f"- Anomalies: {len(anomalies)}",
         "",
         "## Usage By Unit And Metric",
@@ -22,7 +24,7 @@ def render_daily_report(
         "| Unit | Metric | Quantity |",
         "| --- | --- | ---: |",
     ]
-    for unit, metric, quantity in summarize_usage(records):
+    for unit, metric, quantity in usage_summary:
         lines.append(f"| {unit} | {metric} | {format_quantity(quantity)} |")
     lines.extend([
         "",
@@ -95,5 +97,26 @@ def format_quantity(quantity: float) -> str:
 def write_daily_report(contents: str, directory: Path, usage_date: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     output_path = directory / f"{usage_date}.md"
+    output_path.write_text(contents, encoding="utf-8")
+    return output_path
+
+
+def render_hourly_report(records: list[UsageRecord], anomalies: list[Anomaly]) -> str:
+    usage_hour = records[0].usage_hour_utc.isoformat() if records and records[0].usage_hour_utc else "unknown"
+    lines = [f"# HERE Usage Anomaly: {usage_hour}", "", f"- Anomalies: {len(anomalies)}", ""]
+    for anomaly in anomalies:
+        lines.append(
+            f"- **{anomaly.severity.upper()}** {anomaly.record.metric} "
+            f"({anomaly.record.feature_id or '-'} / {anomaly.record.app_id or '-'}): "
+            f"{anomaly.record.quantity:,.2f} vs {anomaly.baseline_median:,.2f} baseline "
+            f"({anomaly.percentage_increase:+.0%})"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def write_hourly_report(contents: str, directory: Path, usage_hour: datetime) -> Path:
+    output_directory = directory / "hourly"
+    output_directory.mkdir(parents=True, exist_ok=True)
+    output_path = output_directory / f"{usage_hour.strftime('%Y-%m-%dT%H')}Z.md"
     output_path.write_text(contents, encoding="utf-8")
     return output_path

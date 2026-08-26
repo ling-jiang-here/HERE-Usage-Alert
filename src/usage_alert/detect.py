@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from statistics import median
 
 from .models import Anomaly, DetectionConfig, UsageRecord
@@ -56,4 +56,48 @@ def detect_anomalies(
                 severity=severity,
             )
         )
+    return sorted(anomalies, key=lambda anomaly: anomaly.record.quantity, reverse=True)
+
+
+def detect_hourly_anomalies(
+    records: list[UsageRecord], target_hour_utc: datetime, config: DetectionConfig
+) -> list[Anomaly]:
+    """Compare the completed hour with the same UTC hour on prior days."""
+    target_hour_utc = target_hour_utc.replace(minute=0, second=0, microsecond=0)
+    grouped: dict[tuple[str, str], list[UsageRecord]] = defaultdict(list)
+    for record in records:
+        if record.usage_hour_utc is not None:
+            grouped[(record.metric, record.dimension_key)].append(record)
+
+    anomalies: list[Anomaly] = []
+    for series in grouped.values():
+        current = next((record for record in series if record.usage_hour_utc == target_hour_utc), None)
+        if current is None:
+            continue
+        history = sorted(
+            (record.quantity for record in series
+             if record.usage_hour_utc < target_hour_utc
+             and record.usage_hour_utc.hour == target_hour_utc.hour),
+            reverse=True,
+        )[: config.history_days]
+        if len(history) < config.minimum_baseline_days:
+            continue
+        baseline = median(history)
+        absolute_increase = current.quantity - baseline
+        percentage_increase = absolute_increase / baseline if baseline else float("inf")
+        mad = median(abs(value - baseline) for value in history)
+        robust_z_score = None if mad == 0 else 0.6745 * absolute_increase / mad
+        if not (
+            current.quantity >= baseline * (1 + config.percentage_increase_threshold)
+            and absolute_increase >= config.minimum_absolute_increase
+            and ((robust_z_score is not None and robust_z_score >= config.robust_z_score_threshold)
+                 or (mad == 0 and absolute_increase > 0))
+        ):
+            continue
+        anomalies.append(Anomaly(
+            record=current, baseline_median=baseline, baseline_sample_size=len(history),
+            absolute_increase=absolute_increase, percentage_increase=percentage_increase,
+            robust_z_score=robust_z_score,
+            severity="critical" if percentage_increase >= config.critical_percentage else "warning",
+        ))
     return sorted(anomalies, key=lambda anomaly: anomaly.record.quantity, reverse=True)

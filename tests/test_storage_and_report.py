@@ -33,6 +33,7 @@ class StorageAndReportTests(unittest.TestCase):
             None, None, '{"app_id":"storage-app","feature_id":"data-io"}', datetime.now(timezone.utc),
         )
         report = render_daily_report([self.record, storage_record], [])
+        self.assertIn("- Usage series: 2", report)
         self.assertIn("| transactions | transactions | 12,500.00 |", report)
         self.assertIn("| GB-Months | Data IO | 3,000.00 |", report)
         self.assertNotIn("Total quantity", report)

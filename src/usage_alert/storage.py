@@ -10,7 +10,7 @@ from .models import UsageRecord
 
 HEADERS = (
     "usage_date_utc", "metric", "quantity", "unit", "feature_id", "app_id",
-    "project_id", "billing_tag", "category", "dimension_key", "source_retrieved_at_utc",
+    "project_id", "billing_tag", "category", "dimension_key", "source_retrieved_at_utc", "usage_hour_utc",
 )
 
 
@@ -39,6 +39,7 @@ def write_daily_records(records: list[UsageRecord], directory: Path) -> Path:
                 "category": record.category or "",
                 "dimension_key": record.dimension_key,
                 "source_retrieved_at_utc": record.source_retrieved_at.isoformat(),
+                "usage_hour_utc": record.usage_hour_utc.isoformat() if record.usage_hour_utc else "",
             })
     os.replace(temporary_path, output_path)
     return output_path
@@ -59,8 +60,39 @@ def read_records(directory: Path) -> list[UsageRecord]:
                     dimension_key=row["dimension_key"],
                     source_retrieved_at=datetime.fromisoformat(row["source_retrieved_at_utc"]),
                     category=row.get("category") or None,
+                    usage_hour_utc=(
+                        datetime.fromisoformat(row["usage_hour_utc"])
+                        if row.get("usage_hour_utc") else None
+                    ),
                 ))
     return records
+
+
+def write_hourly_records(records: list[UsageRecord], directory: Path) -> Path:
+    if not records or any(record.usage_hour_utc is None for record in records):
+        raise ValueError("Hourly output requires records with a UTC hour")
+    hours = {record.usage_hour_utc for record in records}
+    if len(hours) != 1:
+        raise ValueError("An hourly output must contain one UTC hour")
+    directory.mkdir(parents=True, exist_ok=True)
+    hour = next(iter(hours))
+    output_path = directory / f"{hour.strftime('%Y-%m-%dT%H')}Z.csv"
+    temporary_path = output_path.with_suffix(".tmp")
+    with temporary_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=HEADERS, lineterminator="\n")
+        writer.writeheader()
+        for record in sorted(records, key=lambda item: (item.metric, item.dimension_key)):
+            writer.writerow({
+                "usage_date_utc": record.usage_date.isoformat(), "metric": record.metric,
+                "quantity": record.quantity, "unit": record.unit,
+                "feature_id": record.feature_id or "", "app_id": record.app_id or "",
+                "project_id": record.project_id or "", "billing_tag": record.billing_tag or "",
+                "category": record.category or "", "dimension_key": record.dimension_key,
+                "source_retrieved_at_utc": record.source_retrieved_at.isoformat(),
+                "usage_hour_utc": record.usage_hour_utc.isoformat(),
+            })
+    os.replace(temporary_path, output_path)
+    return output_path
 
 
 def write_raw_artifact(payload: str, directory: Path, usage_date: str) -> Path:

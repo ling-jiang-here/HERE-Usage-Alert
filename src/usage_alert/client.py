@@ -8,7 +8,7 @@ import os
 import secrets
 import time
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -29,6 +29,19 @@ class HereUsageClient:
         self.usage_path = os.getenv("HERE_USAGE_API_USAGE_PATH", "").strip()
 
     def fetch_usage(self, usage_date: date) -> str:
+        return self._fetch_usage_window(
+            f"{usage_date.isoformat()}T00:00:00", f"{usage_date.isoformat()}T23:59:59", "day"
+        )
+
+    def fetch_usage_hour(self, usage_hour_utc: datetime) -> str:
+        if usage_hour_utc.tzinfo is None:
+            usage_hour_utc = usage_hour_utc.replace(tzinfo=timezone.utc)
+        usage_hour_utc = usage_hour_utc.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        start = usage_hour_utc.isoformat().replace("+00:00", "Z")
+        end = (usage_hour_utc.replace(minute=59, second=59)).isoformat().replace("+00:00", "Z")
+        return self._fetch_usage_window(start, end, "hour")
+
+    def _fetch_usage_window(self, start: str, end: str, detail_level: str) -> str:
         if not self.usage_path.startswith("/") or "{realmId}" not in self.usage_path:
             raise HereClientError(
                 "HERE_USAGE_API_USAGE_PATH must be the documented path containing '{realmId}'."
@@ -36,9 +49,9 @@ class HereUsageClient:
         token = self._access_token()
         path = self.usage_path.replace("{realmId}", quote(self.realm_id, safe=""))
         parameters = {
-            "startDate": f"{usage_date.isoformat()}T00:00:00",
-            "endDate": f"{usage_date.isoformat()}T23:59:59",
-            "detailLevel": "day",
+            "startDate": start,
+            "endDate": end,
+            "detailLevel": detail_level,
             "groupBy": "appId,billingTag,project",
             "limit": 100,
             "offset": 0,

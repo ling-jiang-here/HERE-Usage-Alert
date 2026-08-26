@@ -12,7 +12,9 @@ class SchemaError(ValueError):
     """Raised when an input response cannot be mapped safely."""
 
 
-def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> list[UsageRecord]:
+def normalize_records(
+    payload: Any, retrieved_at: datetime | None = None, preserve_hours: bool = False
+) -> list[UsageRecord]:
     """Normalize the temporary fixture contract into validated canonical records.
 
     Replace only this mapper when the redacted HERE Usage API response is available.
@@ -28,6 +30,8 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
         if not isinstance(row, dict):
             raise SchemaError(f"Record {index} is not an object")
         try:
+            raw_usage_time = _first_value(row, "usage_hour_utc", "usageDateTime", default=None)
+            usage_hour_utc = _parse_usage_hour(raw_usage_time) if preserve_hours else None
             usage_date = date.fromisoformat(str(_first_value(row, "usage_date_utc", "usageDateTime"))[:10])
             metric = str(_first_value(row, "metric", "name", "featureId")).strip()
             quantity = float(_first_value(row, "quantity", "billableValue", "usageValue"))
@@ -48,7 +52,7 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
             if value not in (None, ""):
                 dimensions[key] = str(value).strip()
         dimension_key = json.dumps(dimensions, sort_keys=True, separators=(",", ":"))
-        unique_key = (usage_date, metric, dimension_key)
+        unique_key = (usage_date, metric, dimension_key, usage_hour_utc)
         category = _first_value(row, "category", default=None)
         if unique_key in record_positions:
             position = record_positions[unique_key]
@@ -75,9 +79,19 @@ def normalize_records(payload: Any, retrieved_at: datetime | None = None) -> lis
                 dimension_key=dimension_key,
                 source_retrieved_at=timestamp,
                 category=category,
+                usage_hour_utc=usage_hour_utc,
             )
         )
     return records
+
+
+def _parse_usage_hour(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
 
 
 def _first_value(row: dict[str, Any], *keys: str, default: Any = ...) -> Any:

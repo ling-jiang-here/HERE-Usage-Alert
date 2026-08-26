@@ -1,76 +1,51 @@
 # HERE Usage Alert
 
-Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. It stores billable daily aggregates in `data/curated/`, generates Markdown reports in `reports/`, posts a webhook event after each successful run, and creates a deduplicated GitHub Issue for a detected spike.
+Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2, writes a local Markdown report and CSV aggregate, posts a webhook event, and opens or updates a GitHub Issue when it detects an abnormal spike. Reports and data files stay local/ephemeral; they are never committed to the repository (`reports/` and `data/` are git-ignored).
 
-## Status
+## Quick Start
 
-Live collection uses HERE Cost Management Usage API v2. The monitor preserves HERE's billing unit and reports `billableValue` when it is supplied, rather than raw metering input.
+1. Copy [.env.example](.env.example) to `.env` and set `HERE_REALM_ID`, the client ID, and the client secret. Keep the default `HERE_USAGE_API_USAGE_PATH=/usage/realms/{realmId}` unless HERE changes the API contract.
+2. Run the test suite:
 
-## Local setup
+   ```sh
+   PYTHONPATH=src python3 -m unittest discover -s tests -v
+   ```
 
-1. Copy [.env.example](.env.example) to `.env` and populate the client ID and client secret.
-2. Set `HERE_REALM_ID` to the organization realm ID.
-3. Keep the documented default `HERE_USAGE_API_USAGE_PATH=/usage/realms/{realmId}` unless HERE changes the API contract.
-4. Run the test suite:
+3. Run against a recorded fixture:
 
-```sh
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-```
+   ```sh
+   PYTHONPATH=src python3 -m usage_alert.main \
+     --input tests/fixtures/usage-response.example.json \
+     --date 2026-08-18
+   ```
 
-Run the fixture flow:
+4. Run a live collection:
 
-```sh
-PYTHONPATH=src python3 -m usage_alert.main \
-  --input tests/fixtures/usage-response.example.json \
-  --date 2026-08-18
-```
+   ```sh
+   PYTHONPATH=src python3 -m usage_alert.main --fetch --date 2026-08-18
+   ```
 
-Run a live collection:
-
-```sh
-PYTHONPATH=src python3 -m usage_alert.main --fetch --date 2026-08-18
-```
-
-The program uses OAuth client credentials to obtain a short-lived access token. It never logs the client secret or access token.
-
-## HERE API Contract
-
-The integration targets Cost Management Usage API v2 at `https://usage.bam.api.here.com/v2`, using `GET /usage/realms/{realmId}` with day-level detail and `appId`, `billingTag`, and `project` groups. Update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its response schema.
+The client authenticates with OAuth client credentials and never logs the client secret or access token. It targets `GET /usage/realms/{realmId}` at `https://usage.bam.api.here.com/v2` with day-level detail and `appId`, `billingTag`, and `project` groups; update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its response schema.
 
 ## GitHub Actions
 
-The workflow is at [.github/workflows/usage-monitor.yml](.github/workflows/usage-monitor.yml). Add these repository secrets before enabling it:
+Two workflows run the same CLI on a schedule and can also be dispatched manually:
 
-- `HERE_USAGE_API_CLIENT_ID`
-- `HERE_USAGE_API_CLIENT_SECRET`
+- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. Always writes a report, including a healthy event when no anomaly is found.
+- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days, and only posts a webhook event/issue when an anomaly is found. Because each run starts from a fresh checkout, hourly baseline history does not persist across runs unless the workflow restores it from another store (for example, a workflow cache or artifact download step) first.
 
-Add these repository variables:
+Add these repository secrets: `HERE_USAGE_API_CLIENT_ID`, `HERE_USAGE_API_CLIENT_SECRET`.
 
-- `HERE_USAGE_API_BASE_URL`
-- `HERE_REALM_ID`
-- `HERE_OAUTH_TOKEN_URL`
-- `HERE_OAUTH_SCOPE` (can be empty)
-- `HERE_USAGE_API_USAGE_PATH`
-- `ALERT_WEBHOOK_URL`
+Add these repository variables: `HERE_USAGE_API_BASE_URL`, `HERE_REALM_ID`, `HERE_OAUTH_TOKEN_URL`, `HERE_OAUTH_SCOPE` (can be empty), `HERE_USAGE_API_USAGE_PATH`, `ALERT_WEBHOOK_URL`.
 
-The daily workflow runs at 08:20 UTC and preserves the daily report, including a healthy event when no anomaly is found. The separate [hourly workflow](.github/workflows/usage-monitor-hourly.yml) runs at 20 minutes past every hour, checks the completed UTC hour against the same hour on prior days, and creates a webhook event and issue only when an anomaly is found.
+To verify webhook delivery without querying HERE or opening an issue, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
 
-Reports and curated/hourly data are never committed or pushed to the repository; `reports/` and `data/` are git-ignored. Each GitHub Actions run only has whatever history exists in that run's fresh checkout, so hourly baseline history does not persist across separate CI runs unless the workflow is changed to restore it from another store (for example, a workflow cache or artifact download step) before analysis.
+## Detection and Alerts
 
-Both workflows can be manually dispatched. The daily workflow accepts a historical date; the hourly workflow checks the most recently completed UTC hour.
+For each metric and dimension set, the monitor requires 14 prior daily observations, then compares the target period with the prior 30 days using median and median absolute deviation (MAD). A spike must pass both the percentage/absolute-increase thresholds and a robust z-score threshold; when MAD is zero, a configured minimum absolute increase avoids divide-by-zero and low-volume noise. An alert identifies contributing dimensions, not root cause — deployment, retry, caching, and credential-leak explanations remain unverified hypotheses until corroborated by application telemetry.
 
-To verify online webhook delivery, manually run **HERE Usage Monitor** with `test_webhook` selected. The runner sends one clearly synthetic critical event (`metric: synthetic_webhook_test`) without querying HERE or opening a GitHub Issue.
+Each daily report also includes month-to-date transaction totals for services configured in `config/free_tiers.json`: `APPROACHING` at 80% of the free-tier allowance and `EXCEEDED` at 100%. DataStorage records count toward Data IO totals within their matching billing unit; non-comparable units stay in the usage summary only.
 
-## Alert Semantics
+## Reference
 
-For each metric and available dimension set, the monitor requires 14 prior daily observations. It compares the target day with the previous 30 days using median and median absolute deviation (MAD). A spike must pass both the percentage/absolute thresholds and a robust z-score threshold. When MAD is zero, the configured absolute increase rule prevents divide-by-zero and low-volume noise.
-
-An alert identifies contributing dimensions, not root cause. Deployment, retry, caching, and credential-leak explanations remain unverified hypotheses until application telemetry is correlated.
-
-## Monthly Free-Tier Monitoring
-
-Each daily report includes month-to-date transaction totals for services whose public Base Plan free tiers are configured in `config/free_tiers.json`. A service is `APPROACHING` at 80% of its allowance and `EXCEEDED` at 100%. DataStorage records are included as Data IO totals within their matching billing unit; non-comparable units remain in the usage summary.
-
-## Pricing Reference
-
-Current public HERE Base Plan free-tier allowances are recorded in [docs/here-base-plan-free-tiers.md](docs/here-base-plan-free-tiers.md). The reference is dated and must be reviewed against HERE's pricing page and the organization's agreement before it is used for billing decisions.
+Current public HERE Base Plan free-tier allowances are recorded in [docs/here-base-plan-free-tiers.md](docs/here-base-plan-free-tiers.md). This reference is dated and must be checked against HERE's pricing page and the organization's agreement before use in billing decisions.
