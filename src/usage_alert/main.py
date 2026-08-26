@@ -44,7 +44,8 @@ def main() -> int:
         records = normalize_records(payload, preserve_hours=True)
         hourly_records = [record for record in records if record.usage_hour_utc == target_hour]
         if not hourly_records:
-            raise ValueError(f"Input has no records for {target_hour.isoformat()}")
+            print(f"No hourly usage records for {target_hour.isoformat()}; no report written.")
+            return 0
         hourly_directory = arguments.root / "data" / "hourly"
         history = [record for record in read_records(hourly_directory) if record.usage_hour_utc != target_hour]
         write_hourly_records(hourly_records, hourly_directory)
