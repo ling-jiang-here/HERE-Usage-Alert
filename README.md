@@ -1,6 +1,6 @@
 # HERE Usage Alert
 
-Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2 and checks for abnormal spikes. Reports and CSV data are written only for local `--input` runs; live `--fetch` runs keep data in memory and do not upload artifacts, commit files, or create GitHub issues.
+Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2, stores local analysis data, writes local reports, and checks for abnormal spikes. Nothing is committed, uploaded, or pushed by the automation workflows.
 
 ## Quick Start
 
@@ -27,12 +27,14 @@ Scheduled, organization-wide HERE usage monitoring with no hosted database or da
 
 The client authenticates with OAuth client credentials and never logs the client secret or access token. It targets `GET /usage/realms/{realmId}` at `https://usage.bam.api.here.com/v2` with day-level detail and `appId`, `billingTag`, and `project` groups; update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its response schema.
 
+Daily and hourly usage data are kept locally for analysis. The project prunes older files automatically: reports are kept for the last 90 days, and local analysis data is retained only as long as needed for the configured history window, with a 90-day floor.
+
 ## GitHub Actions
 
 Two workflows run the same CLI on a schedule and can also be dispatched manually:
 
-- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. In live mode it analyzes in memory and only sends a webhook when anomalies are found.
-- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days and only sends a webhook when an anomaly is found.
+- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It stores local daily analysis files and sends a webhook only when alerts are found.
+- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks the completed UTC hour against the same hour on prior days, stores local hourly analysis files, and sends a webhook only when an anomaly is found.
 
 Add these repository secrets: `HERE_USAGE_API_CLIENT_ID`, `HERE_USAGE_API_CLIENT_SECRET`.
 

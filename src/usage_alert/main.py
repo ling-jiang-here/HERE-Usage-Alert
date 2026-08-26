@@ -12,7 +12,7 @@ from .notify import notify_webhook
 from .normalize import normalize_records
 from .quota import evaluate_month_to_date, load_free_tiers
 from .report import render_daily_report, render_hourly_report, write_daily_report, write_hourly_report
-from .storage import read_records, write_daily_records, write_hourly_records
+from .storage import prune_daily_files, prune_hourly_files, read_records, write_daily_records, write_hourly_records
 
 
 def main() -> int:
@@ -28,7 +28,6 @@ def main() -> int:
 
     load_dotenv(arguments.root / ".env")
     target_date = arguments.date or date.today() - timedelta(days=1)
-    persist_outputs = arguments.input is not None
     if arguments.test_webhook:
         test_anomaly = _synthetic_test_anomaly()
         notified = notify_webhook([test_anomaly], [test_anomaly.record], "synthetic-webhook-test")
@@ -38,7 +37,7 @@ def main() -> int:
         target_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
         config = load_detection_config(arguments.root / "config" / "thresholds.json")
         if arguments.fetch:
-            raw_payload = HereUsageClient().fetch_hourly_history(target_hour, config.history_days)
+            raw_payload = HereUsageClient().fetch_usage_hour(target_hour)
             payload = json.loads(raw_payload)
         else:
             payload = json.loads(arguments.input.read_text(encoding="utf-8"))
@@ -46,36 +45,26 @@ def main() -> int:
         hourly_records = [record for record in records if record.usage_hour_utc == target_hour]
         if not hourly_records:
             raise ValueError(f"Input has no records for {target_hour.isoformat()}")
-        if arguments.fetch:
-            all_records = [
-                record for record in records
-                if record.usage_hour_utc is not None
-                and record.usage_hour_utc <= target_hour
-                and record.usage_hour_utc.hour == target_hour.hour
-            ]
-        else:
-            hourly_directory = arguments.root / "data" / "hourly"
-            history = [record for record in read_records(hourly_directory) if record.usage_hour_utc != target_hour]
-            write_hourly_records(hourly_records, hourly_directory)
-            all_records = history + hourly_records
+        hourly_directory = arguments.root / "data" / "hourly"
+        history = [record for record in read_records(hourly_directory) if record.usage_hour_utc != target_hour]
+        write_hourly_records(hourly_records, hourly_directory)
+        prune_hourly_files(hourly_directory, target_hour, max(config.history_days, config.data_retention_days), ".csv")
+        all_records = history + hourly_records
         anomalies = detect_hourly_anomalies(all_records, target_hour, config)
         if not anomalies:
             print(f"No hourly anomaly for {target_hour.isoformat()}; no report written.")
             return 0
         report = render_hourly_report(hourly_records, anomalies)
-        report_reference = f"hourly:{target_hour.isoformat()}"
-        if persist_outputs:
-            report_path = write_hourly_report(report, arguments.root / "reports", target_hour)
-            report_reference = str(report_path)
-            print(f"Wrote hourly anomaly report: {report_path}")
+        report_path = write_hourly_report(report, arguments.root / "reports", target_hour)
+        prune_hourly_files(arguments.root / "reports" / "hourly", target_hour, config.report_retention_days, ".md")
+        report_reference = str(report_path)
+        print(f"Wrote hourly anomaly report: {report_path}")
         notified = notify_webhook(anomalies, hourly_records, report_reference)
         print(f"Webhook event sent: {'yes' if notified else 'no'}")
         return 0
     config = load_detection_config(arguments.root / "config" / "thresholds.json")
     if arguments.fetch:
-        history_start = target_date - timedelta(days=config.history_days)
-        month_start = target_date.replace(day=1)
-        raw_payload = HereUsageClient().fetch_usage_range(min(history_start, month_start), target_date)
+        raw_payload = HereUsageClient().fetch_usage(target_date)
         payload = json.loads(raw_payload)
     else:
         payload = json.loads(arguments.input.read_text(encoding="utf-8"))
@@ -84,14 +73,11 @@ def main() -> int:
     daily_records = [record for record in records if record.usage_date == target_date]
     if not daily_records:
         raise ValueError(f"Input has no records for {target_date.isoformat()}")
-    if arguments.fetch:
-        history_start = target_date - timedelta(days=config.history_days)
-        all_records = [record for record in records if history_start <= record.usage_date <= target_date]
-    else:
-        curated_directory = arguments.root / "data" / "curated"
-        history = [record for record in read_records(curated_directory) if record.usage_date != target_date]
-        write_daily_records(daily_records, curated_directory)
-        all_records = history + daily_records
+    curated_directory = arguments.root / "data" / "curated"
+    history = [record for record in read_records(curated_directory) if record.usage_date != target_date]
+    write_daily_records(daily_records, curated_directory)
+    prune_daily_files(curated_directory, target_date, max(config.history_days, config.data_retention_days), ".csv")
+    all_records = history + daily_records
     anomalies = detect_anomalies(all_records, target_date, config)
     threshold, free_tiers, data_io_free_gb = load_free_tiers(arguments.root / "config" / "free_tiers.json")
     month_records = [
@@ -101,15 +87,12 @@ def main() -> int:
     quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
     quota_alerts = [quota for quota in quota_statuses if quota.status == "EXCEEDED"]
     report = render_daily_report(daily_records, anomalies, quota_statuses)
-    report_reference = f"daily:{target_date.isoformat()}"
-    if persist_outputs:
-        report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
-        report_reference = str(report_path)
-        print(f"Wrote report: {report_path}")
-    elif anomalies or quota_alerts:
-        print("Daily alerts detected; report not persisted in fetch mode.")
+    report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
+    prune_daily_files(arguments.root / "reports", target_date, config.report_retention_days, ".md")
+    report_reference = str(report_path)
+    print(f"Wrote report: {report_path}")
     print(f"Anomalies: {len(anomalies)}")
-    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts) if anomalies or quota_alerts or persist_outputs else False
+    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts) if anomalies or quota_alerts else False
     print(f"Webhook event sent: {'yes' if notified else 'no'}")
     return 0
 

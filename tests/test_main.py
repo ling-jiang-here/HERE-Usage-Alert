@@ -12,28 +12,35 @@ from usage_alert.main import main
 
 
 class MainTests(unittest.TestCase):
-    def test_fetch_mode_keeps_reports_and_data_in_memory(self) -> None:
+    def test_fetch_mode_persists_local_analysis_files_and_prunes_old_ones(self) -> None:
         target_date = date(2026, 8, 18)
         payload = {
             "items": [
                 {
-                    "usage_date_utc": (target_date - timedelta(days=offset)).isoformat(),
+                    "usage_date_utc": target_date.isoformat(),
                     "metric": "transactions",
                     "quantity": 10_000,
                     "unit": "Transactions",
                     "feature_id": "routing",
                     "app_id": "fleet-prod",
                 }
-                for offset in range(14, -1, -1)
             ]
         }
         with TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             (root / "config").mkdir()
+            (root / "data" / "curated").mkdir(parents=True)
+            (root / "reports").mkdir(parents=True)
+            (root / "data" / "curated" / "2026-05-19.csv").write_text("stale", encoding="utf-8")
+            (root / "data" / "curated" / "2026-07-05.csv").write_text("recent-enough", encoding="utf-8")
+            (root / "reports" / "2026-05-19.md").write_text("stale", encoding="utf-8")
+            (root / "reports" / "2026-06-25.md").write_text("within-retention", encoding="utf-8")
             (root / "config" / "thresholds.json").write_text(
                 json.dumps(
                     {
                         "history_days": 30,
+                        "data_retention_days": 45,
+                        "report_retention_days": 60,
                         "minimum_baseline_days": 14,
                         "minimum_absolute_increase": 1000,
                         "percentage_increase_threshold": 0.5,
@@ -64,7 +71,7 @@ class MainTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                with patch("usage_alert.main.HereUsageClient.fetch_usage_range", return_value=json.dumps(payload)):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
                         with patch(
                             "sys.argv",
@@ -78,7 +85,11 @@ class MainTests(unittest.TestCase):
                             ],
                         ):
                             self.assertEqual(0, main())
-            self.assertFalse((root / "data").exists())
-            self.assertFalse((root / "reports").exists())
+            self.assertTrue((root / "data" / "curated" / "2026-08-18.csv").exists())
+            self.assertTrue((root / "reports" / "2026-08-18.md").exists())
+            self.assertFalse((root / "data" / "curated" / "2026-05-19.csv").exists())
+            self.assertTrue((root / "data" / "curated" / "2026-07-05.csv").exists())
+            self.assertFalse((root / "reports" / "2026-05-19.md").exists())
+            self.assertTrue((root / "reports" / "2026-06-25.md").exists())
             self.assertFalse((root / "artifacts").exists())
             notify_webhook.assert_not_called()

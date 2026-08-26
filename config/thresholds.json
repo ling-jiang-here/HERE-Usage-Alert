@@ -1,5 +1,7 @@
 {
   "history_days": 30,
+  "data_retention_days": 90,
+  "report_retention_days": 90,
   "minimum_baseline_days": 14,
   "minimum_absolute_increase": 1000,
   "percentage_increase_threshold": 0.5,

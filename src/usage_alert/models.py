@@ -29,6 +29,8 @@ class DetectionConfig:
     robust_z_score_threshold: float
     warning_percentage: float
     critical_percentage: float
+    data_retention_days: int = 90
+    report_retention_days: int = 90
 
 
 @dataclass(frozen=True)

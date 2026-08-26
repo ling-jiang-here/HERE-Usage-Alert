@@ -25,6 +25,8 @@ def load_detection_config(path: Path) -> DetectionConfig:
     severity = payload["severity"]
     return DetectionConfig(
         history_days=int(payload["history_days"]),
+        data_retention_days=int(payload.get("data_retention_days", 90)),
+        report_retention_days=int(payload.get("report_retention_days", 90)),
         minimum_baseline_days=int(payload["minimum_baseline_days"]),
         minimum_absolute_increase=float(payload["minimum_absolute_increase"]),
         percentage_increase_threshold=float(payload["percentage_increase_threshold"]),

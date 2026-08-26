@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import UsageRecord
@@ -93,4 +93,37 @@ def write_hourly_records(records: list[UsageRecord], directory: Path) -> Path:
             })
     os.replace(temporary_path, output_path)
     return output_path
+
+
+def prune_daily_files(directory: Path, latest_date: date, keep_days: int, suffix: str) -> list[Path]:
+    if keep_days < 1 or not directory.exists():
+        return []
+    cutoff = latest_date - timedelta(days=keep_days - 1)
+    removed: list[Path] = []
+    for path in sorted(directory.glob(f"*{suffix}")):
+        try:
+            file_date = date.fromisoformat(path.stem)
+        except ValueError:
+            continue
+        if file_date < cutoff:
+            path.unlink(missing_ok=True)
+            removed.append(path)
+    return removed
+
+
+def prune_hourly_files(directory: Path, latest_hour: datetime, keep_days: int, suffix: str) -> list[Path]:
+    if keep_days < 1 or not directory.exists():
+        return []
+    latest_hour = latest_hour.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    cutoff = latest_hour - timedelta(days=keep_days - 1)
+    removed: list[Path] = []
+    for path in sorted(directory.glob(f"*{suffix}")):
+        try:
+            file_hour = datetime.strptime(path.stem, "%Y-%m-%dT%HZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if file_hour < cutoff:
+            path.unlink(missing_ok=True)
+            removed.append(path)
+    return removed
 
