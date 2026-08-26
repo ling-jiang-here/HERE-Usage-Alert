@@ -51,3 +51,6 @@ Each daily report also includes month-to-date transaction totals for services co
 ## Reference
 
 Current public HERE Base Plan free-tier allowances are recorded in [docs/here-base-plan-free-tiers.md](docs/here-base-plan-free-tiers.md). This reference is dated and must be checked against HERE's pricing page and the organization's agreement before use in billing decisions.
+
+The current Webhook endpoint for checking the alers:  
+https://webhook.cool/at/brave-dolphin-57/qnbh_mPXmAdK8m0KXAIy3ydhJVRaJy61
