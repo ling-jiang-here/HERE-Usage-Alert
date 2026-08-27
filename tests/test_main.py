@@ -14,6 +14,22 @@ from usage_alert.storage import write_hourly_records
 
 
 class MainTests(unittest.TestCase):
+    def test_webhook_smoke_test_sends_synthetic_critical_anomaly(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            with patch.dict(os.environ, {"ALERT_WEBHOOK_URL": "https://example.test/webhook"}, clear=False):
+                with patch("usage_alert.main.notify_webhook", return_value=True) as notify_webhook:
+                    with patch(
+                        "sys.argv",
+                        ["usage_alert.main", "--test-webhook", "--root", temporary_directory],
+                    ):
+                        self.assertEqual(0, main())
+
+        anomalies, records, report_reference = notify_webhook.call_args.args
+        self.assertEqual("synthetic-webhook-test", report_reference)
+        self.assertEqual(1, len(anomalies))
+        self.assertEqual("critical", anomalies[0].severity)
+        self.assertEqual("synthetic_webhook_test", records[0].metric)
+
     def test_fetch_mode_persists_local_analysis_files_and_prunes_old_ones(self) -> None:
         target_date = date(2026, 8, 18)
         payload = {

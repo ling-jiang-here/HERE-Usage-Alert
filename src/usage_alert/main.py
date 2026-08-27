@@ -9,6 +9,7 @@ from pathlib import Path
 from .client import HereUsageClient
 from .config import load_detection_config, load_dotenv
 from .detect import detect_anomalies, detect_hourly_anomalies
+from .models import UsageRecord
 from .notify import notify_webhook
 from .normalize import normalize_records
 from .quota import evaluate_month_to_date, load_free_tiers
@@ -114,7 +115,7 @@ def main() -> int:
 
 
 def _synthetic_test_anomaly():
-    from .models import Anomaly, UsageRecord
+    from .models import Anomaly
 
     record = UsageRecord(
         usage_date=date.today(),
@@ -127,6 +128,15 @@ def _synthetic_test_anomaly():
         billing_tag=None,
         dimension_key='{"app_id":"github-actions","feature_id":"synthetic"}',
         source_retrieved_at=datetime.now(timezone.utc),
+    )
+    return Anomaly(
+        record=record,
+        baseline_median=100,
+        baseline_sample_size=14,
+        absolute_increase=1_900,
+        percentage_increase=19.0,
+        robust_z_score=10.0,
+        severity="critical",
     )
 
 
@@ -151,15 +161,6 @@ def _aggregate_hourly_window_records(records: list[UsageRecord], target_hour: da
         record_positions[unique_key] = len(aggregated)
         aggregated.append(window_record)
     return aggregated
-    return Anomaly(
-        record=record,
-        baseline_median=100,
-        baseline_sample_size=14,
-        absolute_increase=1_900,
-        percentage_increase=19.0,
-        robust_z_score=10.0,
-        severity="critical",
-    )
 
 
 if __name__ == "__main__":

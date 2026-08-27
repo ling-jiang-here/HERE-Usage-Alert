@@ -112,7 +112,12 @@ def notify_webhook(
     else:
         payload = build_healthy_webhook_payload(records, report_path)
     body = json.dumps(payload, allow_nan=False).encode("utf-8")
-    request = Request(webhook_url, data=body, method="POST", headers={"Content-Type": "application/json"})
+    request = Request(
+        webhook_url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "User-Agent": "HERE-Usage-Alert/0.1"},
+    )
     try:
         with urlopen(request, timeout=15) as response:
             if not 200 <= response.status < 300:

@@ -1,13 +1,31 @@
 from datetime import date, datetime, timezone
 import json
+import os
 import unittest
+from unittest.mock import MagicMock, patch
 
 from usage_alert.models import Anomaly, UsageRecord
-from usage_alert.notify import build_healthy_webhook_payload, build_quota_alert_payload, build_webhook_payload
+from usage_alert.notify import build_healthy_webhook_payload, build_quota_alert_payload, build_webhook_payload, notify_webhook
 from usage_alert.quota import QuotaStatus
 
 
 class NotificationTests(unittest.TestCase):
+    def test_notifier_includes_application_user_agent(self) -> None:
+        record = UsageRecord(
+            date(2026, 8, 18), "transactions", 40_000, "transactions", "routing", "fleet-prod",
+            None, None, '{"app_id":"fleet-prod","feature_id":"routing"}', datetime.now(timezone.utc),
+        )
+        anomaly = Anomaly(record, 10_000, 14, 30_000, 3.0, None, "critical")
+        response = MagicMock()
+        response.status = 200
+        response.__enter__.return_value = response
+        with patch.dict(os.environ, {"ALERT_WEBHOOK_URL": "https://example.test/webhook"}, clear=False):
+            with patch("usage_alert.notify.urlopen", return_value=response) as urlopen:
+                self.assertTrue(notify_webhook([anomaly], [record], "reports/2026-08-18.md"))
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual("HERE-Usage-Alert/0.1", request.get_header("User-agent"))
+
     def test_payload_contains_alert_evidence_without_secrets(self) -> None:
         record = UsageRecord(
             date(2026, 8, 18), "transactions", 40_000, "transactions", "routing", "fleet-prod",
