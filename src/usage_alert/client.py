@@ -30,7 +30,7 @@ class HereUsageClient:
 
     def fetch_usage(self, usage_date: date) -> str:
         return self._fetch_usage_window(
-            f"{usage_date.isoformat()}T00:00:00", f"{usage_date.isoformat()}T23:59:59", "day"
+            f"{usage_date.isoformat()}T00:00:00Z", f"{usage_date.isoformat()}T23:59:59Z", "day"
         )
 
     def fetch_usage_hour(self, usage_hour_utc: datetime) -> str:

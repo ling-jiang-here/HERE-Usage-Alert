@@ -30,7 +30,7 @@ def main() -> int:
     arguments = parser.parse_args()
 
     load_dotenv(arguments.root / ".env")
-    target_date = arguments.date or date.today() - timedelta(days=1)
+    target_date = arguments.date or datetime.now(timezone.utc).date() - timedelta(days=1)
     if arguments.test_webhook:
         test_anomaly = _synthetic_test_anomaly()
         notified = notify_webhook([test_anomaly], [test_anomaly.record], "synthetic-webhook-test")
@@ -92,10 +92,20 @@ def main() -> int:
     else:
         payload = json.loads(arguments.input.read_text(encoding="utf-8"))
 
+    raw_item_count = len(payload.get("items", payload.get("records", []))) if isinstance(payload, dict) else len(payload)
     records = normalize_records(payload)
     daily_records = [record for record in records if record.usage_date == target_date]
     if not daily_records:
-        raise ValueError(f"Input has no records for {target_date.isoformat()}")
+        if records:
+            observed_dates = ", ".join(sorted({record.usage_date.isoformat() for record in records}))
+            raise ValueError(
+                f"Input has no records for {target_date.isoformat()}; normalized record dates: {observed_dates}"
+            )
+        print(
+            f"No daily usage records for {target_date.isoformat()}; no report written. "
+            f"(raw API items: {raw_item_count}, normalized records: 0)"
+        )
+        return 0
     curated_directory = arguments.root / "data" / "curated"
     history = [record for record in read_records(curated_directory) if record.usage_date != target_date]
     write_daily_records(daily_records, curated_directory)
