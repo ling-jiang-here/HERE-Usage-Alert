@@ -48,9 +48,9 @@ Two workflows run the same CLI on a schedule and can also be dispatched manually
 - [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for both alerting and healthy completion events.
 - [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks usage from the last 65 minutes, stores the rolling-window result under the current UTC hour, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for alerting and healthy completion events. It still skips markdown report generation when the checked window is healthy.
 
-Add these repository secrets: `HERE_MONITOR_ACCESS_KEY_ID`, `HERE_MONITOR_ACCESS_KEY_SECRET`.
+Add this repository secret: `HERE_MONITOR_ACCESS_KEY_SECRET`.
 
-Add these repository variables: `HERE_REALM_ID`, `HERE_AUTO_DISABLE_APP_CREDENTIALS`, `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`, `ALERT_WEBHOOK_URL`.
+Add these repository variables: `HERE_REALM_ID`, `HERE_MONITOR_ACCESS_KEY_ID`, `HERE_AUTO_DISABLE_APP_CREDENTIALS`, `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`, `ALERT_WEBHOOK_URL`.
 
 To verify webhook delivery without querying HERE, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
 
