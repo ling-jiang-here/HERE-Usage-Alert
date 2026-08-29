@@ -105,7 +105,11 @@ def main() -> int:
             f"No daily usage records for {target_date.isoformat()}; no report written. "
             f"(raw API items: {raw_item_count}, normalized records: 0)"
         )
-        return 0
+        notified = notify_webhook(
+            [], [], target_date.isoformat(), usage_date_utc=target_date.isoformat()
+        )
+        print(f"Webhook event sent: {'yes' if notified else 'no'}")
+        return 0 if notified else 1
     curated_directory = arguments.root / "data" / "curated"
     history = [record for record in read_records(curated_directory) if record.usage_date != target_date]
     write_daily_records(daily_records, curated_directory)
@@ -130,7 +134,7 @@ def main() -> int:
     print(f"Anomalies: {len(anomalies)}")
     notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts, remediation.message or None)
     print(f"Webhook event sent: {'yes' if notified else 'no'}")
-    return 0
+    return 0 if notified else 1
 
 
 def _synthetic_test_anomaly():

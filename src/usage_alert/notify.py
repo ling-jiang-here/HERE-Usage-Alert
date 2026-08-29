@@ -89,11 +89,17 @@ def build_quota_alert_payload(
     }
 
 
-def build_healthy_webhook_payload(records: list[UsageRecord], report_path: str) -> dict[str, object]:
+def build_healthy_webhook_payload(
+    records: list[UsageRecord], report_path: str, usage_date_utc: str | None = None
+) -> dict[str, object]:
+    if usage_date_utc is None:
+        if not records:
+            raise ValueError("A usage date is required when sending a healthy webhook without records")
+        usage_date_utc = records[0].usage_date.isoformat()
     return {
         "event": "here_usage_healthy",
         "severity": "info",
-        "usage_date_utc": records[0].usage_date.isoformat(),
+        "usage_date_utc": usage_date_utc,
         "usage_series_count": len(records),
         "usage_summary": [
             {"unit": unit, "metric": metric, "quantity": quantity}
@@ -109,6 +115,7 @@ def notify_webhook(
     anomalies: list[Anomaly], records: list[UsageRecord], report_path: str,
     quota_alerts: list[QuotaStatus] | None = None,
     remediation_note: str | None = None,
+    usage_date_utc: str | None = None,
 ) -> bool:
     """POST a success or anomaly event after each completed monitoring run."""
     webhook_url = os.getenv("ALERT_WEBHOOK_URL", "").strip()
@@ -120,7 +127,7 @@ def notify_webhook(
     elif quota_alerts:
         payload = build_quota_alert_payload(records, quota_alerts, report_path, remediation_note)
     else:
-        payload = build_healthy_webhook_payload(records, report_path)
+        payload = build_healthy_webhook_payload(records, report_path, usage_date_utc)
     body = json.dumps(payload, allow_nan=False).encode("utf-8")
     request = Request(
         webhook_url,
