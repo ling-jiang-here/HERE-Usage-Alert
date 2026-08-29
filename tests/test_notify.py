@@ -50,6 +50,18 @@ class NotificationTests(unittest.TestCase):
         self.assertIsNone(payload["quota_alerts"][0]["percentage"])
         json.dumps(payload, allow_nan=False)
 
+    def test_quota_alert_payload_includes_remediation_advisory(self) -> None:
+        record = UsageRecord(
+            date(2026, 8, 18), "Fuel Prices", 1, "Transactions", "fuel-prices", "fleet-prod",
+            None, None, '{"app_id":"fleet-prod","feature_id":"fuel-prices"}', datetime.now(timezone.utc),
+        )
+        quota = QuotaStatus("Fuel Prices", 1, 0, None, "EXCEEDED")
+        payload = build_quota_alert_payload(
+            [record], [quota], "reports/2026-08-18.md",
+            "The monitor is using credentials from this same app. Separate the monitor credential.",
+        )
+        self.assertIn("Separate the monitor credential", payload["note"])
+
     def test_quota_alert_payload_sanitizes_non_finite_percentage(self) -> None:
         record = UsageRecord(
             date(2026, 8, 18), "Fuel Prices", 1, "Transactions", "fuel-prices", "fleet-prod",

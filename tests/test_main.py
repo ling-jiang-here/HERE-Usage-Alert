@@ -81,11 +81,9 @@ class MainTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "HERE_USAGE_API_BASE_URL": "https://example.test/v2",
                     "HERE_REALM_ID": "example",
-                    "HERE_USAGE_API_CLIENT_ID": "client-id",
-                    "HERE_USAGE_API_CLIENT_SECRET": "client-secret",
-                    "HERE_USAGE_API_USAGE_PATH": "/usage/realms/{realmId}",
+                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -111,7 +109,7 @@ class MainTests(unittest.TestCase):
             self.assertFalse((root / "reports" / "2026-05-19.md").exists())
             self.assertTrue((root / "reports" / "2026-06-25.md").exists())
             self.assertFalse((root / "artifacts").exists())
-            notify_webhook.assert_called_once_with([], unittest.mock.ANY, unittest.mock.ANY, [])
+            notify_webhook.assert_called_once_with([], unittest.mock.ANY, unittest.mock.ANY, [], None)
 
     def test_hourly_fetch_mode_skips_empty_completed_hour(self) -> None:
         with TemporaryDirectory() as temporary_directory:
@@ -135,11 +133,9 @@ class MainTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "HERE_USAGE_API_BASE_URL": "https://example.test/v2",
                     "HERE_REALM_ID": "example",
-                    "HERE_USAGE_API_CLIENT_ID": "client-id",
-                    "HERE_USAGE_API_CLIENT_SECRET": "client-secret",
-                    "HERE_USAGE_API_USAGE_PATH": "/usage/realms/{realmId}",
+                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -207,11 +203,9 @@ class MainTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "HERE_USAGE_API_BASE_URL": "https://example.test/v2",
                     "HERE_REALM_ID": "example",
-                    "HERE_USAGE_API_CLIENT_ID": "client-id",
-                    "HERE_USAGE_API_CLIENT_SECRET": "client-secret",
-                    "HERE_USAGE_API_USAGE_PATH": "/usage/realms/{realmId}",
+                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -278,11 +272,9 @@ class MainTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "HERE_USAGE_API_BASE_URL": "https://example.test/v2",
                     "HERE_REALM_ID": "example",
-                    "HERE_USAGE_API_CLIENT_ID": "client-id",
-                    "HERE_USAGE_API_CLIENT_SECRET": "client-secret",
-                    "HERE_USAGE_API_USAGE_PATH": "/usage/realms/{realmId}",
+                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -369,11 +361,9 @@ class MainTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "HERE_USAGE_API_BASE_URL": "https://example.test/v2",
                     "HERE_REALM_ID": "example",
-                    "HERE_USAGE_API_CLIENT_ID": "client-id",
-                    "HERE_USAGE_API_CLIENT_SECRET": "client-secret",
-                    "HERE_USAGE_API_USAGE_PATH": "/usage/realms/{realmId}",
+                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -393,3 +383,87 @@ class MainTests(unittest.TestCase):
                             self.assertEqual(0, main())
             self.assertTrue((root / "reports" / "hourly" / f"{target_hour.strftime('%Y-%m-%dT%H')}Z.md").exists())
             notify_webhook.assert_called_once()
+
+    def test_fetch_mode_skips_remediation_when_monitor_uses_same_app_credentials(self) -> None:
+        target_date = date(2026, 8, 26)
+        payload = {
+            "items": [
+                {
+                    "usage_date_utc": target_date.isoformat(),
+                    "metric": "Fuel Prices",
+                    "quantity": 5,
+                    "unit": "Transactions",
+                    "feature_id": "fuel-prices",
+                    "app_id": "target-app",
+                }
+            ]
+        }
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "config").mkdir()
+            (root / "data" / "curated").mkdir(parents=True)
+            (root / "reports").mkdir(parents=True)
+            (root / "config" / "thresholds.json").write_text(
+                json.dumps(
+                    {
+                        "history_days": 30,
+                        "data_retention_days": 45,
+                        "report_retention_days": 60,
+                        "minimum_baseline_days": 14,
+                        "minimum_absolute_increase": 1000,
+                        "percentage_increase_threshold": 0.5,
+                        "robust_z_score_threshold": 3.5,
+                        "severity": {"warning_percentage": 0.5, "critical_percentage": 2.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "config" / "free_tiers.json").write_text(
+                json.dumps(
+                    {
+                        "approaching_threshold": 0.8,
+                        "data_io_free_gb_months": 20,
+                        "transaction_free_tiers": {"Fuel Prices": 0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "HERE_REALM_ID": "example",
+                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
+                },
+                clear=False,
+            ):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps(payload)):
+                    with patch("usage_alert.main.notify_webhook") as notify_webhook:
+                        notify_webhook.return_value = True
+                        with patch("usage_alert.remediate.HereIdentityClient") as identity_client_class:
+                            identity_client = identity_client_class.return_value
+                            identity_client.list_apps.return_value = [{"id": "target-app", "hrn": "hrn:app/target-app"}]
+                            identity_client.list_access_keys.return_value = [{"accessKeyHrn": "hrn:accesskey/1", "accessKeyId": "client-id"}]
+                            with patch(
+                                "sys.argv",
+                                [
+                                    "usage_alert.main",
+                                    "--fetch",
+                                    "--date",
+                                    target_date.isoformat(),
+                                    "--root",
+                                    str(root),
+                                ],
+                            ):
+                                self.assertEqual(0, main())
+
+            report_path = root / "reports" / f"{target_date.isoformat()}.md"
+            report_contents = report_path.read_text(encoding="utf-8")
+            self.assertIn("## Remediation Advisory", report_contents)
+            self.assertIn("Separate the monitor credential", report_contents)
+            notify_webhook.assert_called_once()
+            remediation_note = notify_webhook.call_args.args[4]
+            self.assertIn("The monitor is using credentials from this same app", remediation_note)
+            identity_client.disable_api_key.assert_not_called()
+            identity_client.disable_access_key.assert_not_called()

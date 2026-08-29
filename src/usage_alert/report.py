@@ -9,7 +9,8 @@ from .quota import QuotaStatus
 
 
 def render_daily_report(
-    records: list[UsageRecord], anomalies: list[Anomaly], quota_statuses: list[QuotaStatus] | None = None
+    records: list[UsageRecord], anomalies: list[Anomaly], quota_statuses: list[QuotaStatus] | None = None,
+    remediation_note: str | None = None,
 ) -> str:
     usage_date = records[0].usage_date.isoformat() if records else "unknown"
     usage_summary = summarize_usage(records)
@@ -50,6 +51,15 @@ def render_daily_report(
         "Transaction services and Data IO totals are evaluated only against matching free-tier units. "
         "DataStorage records are included as Data IO usage; non-comparable units remain in the usage summary only.",
         "",
+    ])
+    if remediation_note:
+        lines.extend([
+            "## Remediation Advisory",
+            "",
+            remediation_note,
+            "",
+        ])
+    lines.extend([
         "## Anomalies",
         "",
     ])
@@ -102,7 +112,8 @@ def write_daily_report(contents: str, directory: Path, usage_date: str) -> Path:
 
 
 def render_hourly_report(
-    records: list[UsageRecord], anomalies: list[Anomaly], quota_alerts: list[QuotaStatus] | None = None
+    records: list[UsageRecord], anomalies: list[Anomaly], quota_alerts: list[QuotaStatus] | None = None,
+    remediation_note: str | None = None,
 ) -> str:
     usage_hour = records[0].usage_hour_utc.isoformat() if records and records[0].usage_hour_utc else "unknown"
     lines = [f"# HERE Usage Anomaly: {usage_hour}", "", f"- Anomalies: {len(anomalies)}", ""]
@@ -122,6 +133,8 @@ def render_hourly_report(
                 f"- **{quota.status}** {quota.metric}: {format_quantity(quota.usage)} {quota.unit} "
                 f"against {format_quantity(quota.allowance or 0)} {quota.unit} ({percentage})"
             )
+    if remediation_note:
+        lines.extend(["", "## Remediation Advisory", "", remediation_note])
     return "\n".join(lines) + "\n"
 
 

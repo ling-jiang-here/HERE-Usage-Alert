@@ -61,3 +61,11 @@ class StorageAndReportTests(unittest.TestCase):
             "| Fuel Prices | 1.00 Transactions | 0.00 Transactions | N/A | EXCEEDED |",
             report,
         )
+
+    def test_report_includes_remediation_advisory(self) -> None:
+        report = render_daily_report(
+            [self.record], [], None,
+            "The monitor is using credentials from this same app. Separate the monitor credential from the app used for service queries.",
+        )
+        self.assertIn("## Remediation Advisory", report)
+        self.assertIn("Separate the monitor credential", report)

@@ -16,9 +16,13 @@ class NotificationError(RuntimeError):
 
 
 def build_webhook_payload(
-    anomalies: list[Anomaly], report_path: str, quota_alerts: list[QuotaStatus] | None = None
+    anomalies: list[Anomaly], report_path: str, quota_alerts: list[QuotaStatus] | None = None,
+    remediation_note: str | None = None,
 ) -> dict[str, object]:
     quota_alerts = quota_alerts or []
+    note = "Root-cause hypotheses require corroboration from deployment and application telemetry."
+    if remediation_note:
+        note = f"{note} {remediation_note}"
     return {
         "event": "here_usage_alert",
         "severity": "critical" if any(item.severity == "critical" for item in anomalies) else "warning",
@@ -52,11 +56,16 @@ def build_webhook_payload(
             }
             for item in quota_alerts
         ],
-        "note": "Root-cause hypotheses require corroboration from deployment and application telemetry.",
+        "note": note,
     }
 
 
-def build_quota_alert_payload(records: list[UsageRecord], quota_alerts: list[QuotaStatus], report_path: str) -> dict[str, object]:
+def build_quota_alert_payload(
+    records: list[UsageRecord], quota_alerts: list[QuotaStatus], report_path: str, remediation_note: str | None = None
+) -> dict[str, object]:
+    note = "Configured free-tier usage limits were exceeded."
+    if remediation_note:
+        note = f"{note} {remediation_note}"
     return {
         "event": "here_usage_alert",
         "severity": "warning",
@@ -76,7 +85,7 @@ def build_quota_alert_payload(records: list[UsageRecord], quota_alerts: list[Quo
             }
             for item in quota_alerts
         ],
-        "note": "Configured free-tier usage limits were exceeded.",
+        "note": note,
     }
 
 
@@ -99,6 +108,7 @@ def build_healthy_webhook_payload(records: list[UsageRecord], report_path: str) 
 def notify_webhook(
     anomalies: list[Anomaly], records: list[UsageRecord], report_path: str,
     quota_alerts: list[QuotaStatus] | None = None,
+    remediation_note: str | None = None,
 ) -> bool:
     """POST a success or anomaly event after each completed monitoring run."""
     webhook_url = os.getenv("ALERT_WEBHOOK_URL", "").strip()
@@ -106,9 +116,9 @@ def notify_webhook(
         return False
     quota_alerts = quota_alerts or []
     if anomalies:
-        payload = build_webhook_payload(anomalies, report_path, quota_alerts)
+        payload = build_webhook_payload(anomalies, report_path, quota_alerts, remediation_note)
     elif quota_alerts:
-        payload = build_quota_alert_payload(records, quota_alerts, report_path)
+        payload = build_quota_alert_payload(records, quota_alerts, report_path, remediation_note)
     else:
         payload = build_healthy_webhook_payload(records, report_path)
     body = json.dumps(payload, allow_nan=False).encode("utf-8")

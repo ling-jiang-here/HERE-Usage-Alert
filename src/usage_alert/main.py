@@ -13,6 +13,7 @@ from .models import UsageRecord
 from .notify import notify_webhook
 from .normalize import normalize_records
 from .quota import evaluate_month_to_date, load_free_tiers
+from .remediate import maybe_remediate_app_access
 from .report import render_daily_report, render_hourly_report, write_daily_report, write_hourly_report
 from .storage import prune_daily_files, prune_hourly_files, read_records, write_daily_records, write_hourly_records
 
@@ -45,12 +46,14 @@ def main() -> int:
             payload = json.loads(raw_payload)
         else:
             payload = json.loads(arguments.input.read_text(encoding="utf-8"))
+        raw_item_count = len(payload.get("items", payload.get("records", []))) if isinstance(payload, dict) else len(payload)
         records = normalize_records(payload, preserve_hours=True)
         hourly_records = _aggregate_hourly_window_records(records, target_hour)
         if not hourly_records:
             print(
                 "No hourly usage records from "
-                f"{window_start.isoformat()} to {window_end.isoformat()}; no report written."
+                f"{window_start.isoformat()} to {window_end.isoformat()}; no report written. "
+                f"(raw API items: {raw_item_count}, normalized records: {len(records)})"
             )
             return 0
         hourly_directory = arguments.root / "data" / "hourly"
@@ -66,17 +69,20 @@ def main() -> int:
         ]
         quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
         quota_alerts = [quota for quota in quota_statuses if quota.status == "EXCEEDED"]
+        remediation = maybe_remediate_app_access(month_records, quota_alerts)
+        if remediation.message:
+            print(remediation.message)
         if not anomalies and not quota_alerts:
             notified = notify_webhook([], hourly_records, target_hour.isoformat())
             print(f"No hourly anomaly for {target_hour.isoformat()}; no report written.")
             print(f"Webhook event sent: {'yes' if notified else 'no'}")
             return 0
-        report = render_hourly_report(hourly_records, anomalies, quota_alerts)
+        report = render_hourly_report(hourly_records, anomalies, quota_alerts, remediation.message or None)
         report_path = write_hourly_report(report, arguments.root / "reports", target_hour)
         prune_hourly_files(arguments.root / "reports" / "hourly", target_hour, config.report_retention_days, ".md")
         report_reference = str(report_path)
         print(f"Wrote hourly anomaly report: {report_path}")
-        notified = notify_webhook(anomalies, hourly_records, report_reference, quota_alerts)
+        notified = notify_webhook(anomalies, hourly_records, report_reference, quota_alerts, remediation.message or None)
         print(f"Webhook event sent: {'yes' if notified else 'no'}")
         return 0
     config = load_detection_config(arguments.root / "config" / "thresholds.json")
@@ -103,13 +109,16 @@ def main() -> int:
     ]
     quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
     quota_alerts = [quota for quota in quota_statuses if quota.status == "EXCEEDED"]
-    report = render_daily_report(daily_records, anomalies, quota_statuses)
+    remediation = maybe_remediate_app_access(month_records, quota_alerts)
+    if remediation.message:
+        print(remediation.message)
+    report = render_daily_report(daily_records, anomalies, quota_statuses, remediation.message or None)
     report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
     prune_daily_files(arguments.root / "reports", target_date, config.report_retention_days, ".md")
     report_reference = str(report_path)
     print(f"Wrote report: {report_path}")
     print(f"Anomalies: {len(anomalies)}")
-    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts)
+    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts, remediation.message or None)
     print(f"Webhook event sent: {'yes' if notified else 'no'}")
     return 0
 

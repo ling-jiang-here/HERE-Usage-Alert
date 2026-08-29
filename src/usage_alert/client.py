@@ -20,13 +20,13 @@ class HereClientError(RuntimeError):
 
 class HereUsageClient:
     def __init__(self) -> None:
-        self.base_url = _required("HERE_USAGE_API_BASE_URL").rstrip("/")
+        self.base_url = "https://usage.bam.api.here.com/v2"
         self.realm_id = _required("HERE_REALM_ID")
-        self.client_id = _required("HERE_USAGE_API_CLIENT_ID")
-        self.client_secret = _required("HERE_USAGE_API_CLIENT_SECRET")
-        self.token_url = os.getenv("HERE_OAUTH_TOKEN_URL") or "https://account.api.here.com/oauth2/token"
-        self.scope = os.getenv("HERE_OAUTH_SCOPE", "")
-        self.usage_path = os.getenv("HERE_USAGE_API_USAGE_PATH", "").strip()
+        self.client_id = _required("HERE_MONITOR_ACCESS_KEY_ID")
+        self.client_secret = _required("HERE_MONITOR_ACCESS_KEY_SECRET")
+        self.token_url = "https://account.api.here.com/oauth2/token"
+        self.usage_path = "/usage/realms/{realmId}"
+        self.channel_id = os.getenv("HERE_USAGE_API_CHANNEL_ID", "cold").strip() or "cold"
 
     def fetch_usage(self, usage_date: date) -> str:
         return self._fetch_usage_window(
@@ -55,15 +55,12 @@ class HereUsageClient:
         return self._fetch_usage_window(start, end, "hour")
 
     def _fetch_usage_window(self, start: str, end: str, detail_level: str) -> str:
-        if not self.usage_path.startswith("/") or "{realmId}" not in self.usage_path:
-            raise HereClientError(
-                "HERE_USAGE_API_USAGE_PATH must be the documented path containing '{realmId}'."
-            )
         token = self._access_token()
         path = self.usage_path.replace("{realmId}", quote(self.realm_id, safe=""))
         parameters = {
             "startDate": start,
             "endDate": end,
+            "channelId": self.channel_id,
             "detailLevel": detail_level,
             "groupBy": "appId,billingTag,project",
             "limit": 100,
@@ -113,8 +110,6 @@ class HereUsageClient:
 
     def _access_token(self) -> str:
         fields = {"grant_type": "client_credentials"}
-        if self.scope:
-            fields["scope"] = self.scope
         authorization = _oauth1_authorization_header(self.token_url, fields, self.client_id, self.client_secret)
         request = Request(
             self.token_url,
@@ -126,7 +121,7 @@ class HereUsageClient:
             with urlopen(request, timeout=30) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, json.JSONDecodeError) as error:
-            raise HereClientError("HERE OAuth token request failed; verify client credentials, scope, and token URL.") from error
+            raise HereClientError("HERE OAuth token request failed; verify client credentials and token URL.") from error
         token = payload.get("access_token")
         if not isinstance(token, str) or not token:
             raise HereClientError("HERE OAuth response did not include an access token.")

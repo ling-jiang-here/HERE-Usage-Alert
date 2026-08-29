@@ -4,14 +4,15 @@ Scheduled, organization-wide HERE usage monitoring with no hosted database or da
 
 ## Quick Start
 
-1. Copy [.env.example](.env.example) to `.env` and set `HERE_REALM_ID`, the client ID, and the client secret. Keep the default `HERE_USAGE_API_USAGE_PATH=/usage/realms/{realmId}` unless HERE changes the API contract.
-2. Run the test suite:
+1. Copy [.env.example](.env.example) to `.env` and set `HERE_REALM_ID`, `HERE_MONITOR_ACCESS_KEY_ID`, and `HERE_MONITOR_ACCESS_KEY_SECRET`. The example also includes optional remediation and alerting settings.
+2. Configure optional remediation using the [Remediation flags](#remediation-flags) below.
+3. Run the test suite:
 
    ```sh
    PYTHONPATH=src python3 -m unittest discover -s tests -v
    ```
 
-3. Run against a recorded fixture:
+4. Run against a recorded fixture:
 
    ```sh
    PYTHONPATH=src python3 -m usage_alert.main \
@@ -19,13 +20,24 @@ Scheduled, organization-wide HERE usage monitoring with no hosted database or da
      --date 2026-08-18
    ```
 
-4. Run a live collection:
+5. Run a live collection:
 
    ```sh
    PYTHONPATH=src python3 -m usage_alert.main --fetch --date 2026-08-18
    ```
 
 The client authenticates with OAuth client credentials and never logs the client secret or access token. It targets `GET /usage/realms/{realmId}` at `https://usage.bam.api.here.com/v2` with day-level detail and `appId`, `billingTag`, and `project` groups; update [src/usage_alert/normalize.py](src/usage_alert/normalize.py) only if HERE changes its response schema.
+
+The Usage API, OAuth token, and HERE IAM endpoint URLs are fixed in the implementation. No endpoint URL or OAuth scope setting is required in `.env`; usage requests use the default `cold` channel. The active local settings are listed in [.env.example](.env.example).
+
+## Remediation flags
+
+`HERE_AUTO_DISABLE_APP_CREDENTIALS` and `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT` are both disabled by default in `.env.example`:
+
+- `HERE_AUTO_DISABLE_APP_CREDENTIALS=true` disables enabled API keys and non-monitor OAuth access keys for every app associated with a service whose month-to-date usage exceeds its configured free tier. It is used only when project mode is disabled.
+- `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT=true` takes precedence over credential disabling. For each app using an exceeded service, the monitor creates or reuses a persistent project named after the app, removes stale service links, links all valid HERE service resources except the exceeded service(s), sets `scopeAccess=thisProjectOnly`, ensures app membership, and makes the project the app's restricted default scope. When a later month has no current overage for a managed app, its valid service access is restored while the project is retained for reuse.
+
+Project mode requires HERE permissions to read and manage the target app and project. Resources with no resource home in the realm are skipped and reported; the monitor never silently replaces an incomplete allowlist with unrestricted access and does not fall back to credential disabling.
 
 Daily and hourly usage data are generated the same way for local runs and scheduled runs. The project prunes older files automatically: reports are kept for the last 90 days, and analysis data is retained only as long as needed for the configured history window, with a 90-day floor.
 
@@ -36,11 +48,13 @@ Two workflows run the same CLI on a schedule and can also be dispatched manually
 - [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for both alerting and healthy completion events.
 - [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks usage from the last 65 minutes, stores the rolling-window result under the current UTC hour, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for alerting and healthy completion events. It still skips markdown report generation when the checked window is healthy.
 
-Add these repository secrets: `HERE_USAGE_API_CLIENT_ID`, `HERE_USAGE_API_CLIENT_SECRET`.
+Add these repository secrets: `HERE_MONITOR_ACCESS_KEY_ID`, `HERE_MONITOR_ACCESS_KEY_SECRET`.
 
-Add these repository variables: `HERE_USAGE_API_BASE_URL`, `HERE_REALM_ID`, `HERE_OAUTH_TOKEN_URL`, `HERE_USAGE_API_USAGE_PATH`, `ALERT_WEBHOOK_URL`.
+Add these repository variables: `HERE_REALM_ID`, `HERE_AUTO_DISABLE_APP_CREDENTIALS`, `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`, `ALERT_WEBHOOK_URL`.
 
 To verify webhook delivery without querying HERE, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
+
+The webhook payload is a compact JSON event, not a copy of the markdown report: it carries `report_path` as a reference plus only the anomaly or quota-alert summary fields (see [src/usage_alert/notify.py](src/usage_alert/notify.py)), while the full per-metric usage table and free-tier breakdown stay in the markdown report file. Seeing different content between the two is expected.
 
 ## Detection and Alerts
 
