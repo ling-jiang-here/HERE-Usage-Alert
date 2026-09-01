@@ -12,11 +12,20 @@ from usage_alert.remediate import (
     maybe_disable_app_credentials,
     maybe_limit_app_to_within_free_tier_project,
     maybe_remediate_app_access,
+    _managed_app_id_from_project,
     _managed_project_id,
 )
 
 
 class RemediationTests(unittest.TestCase):
+    def test_parses_current_managed_project_description(self) -> None:
+        self.assertEqual(
+            "target-app",
+            _managed_app_id_from_project(
+                {"description": "Managed by usage-alert to restrict app target-app to within-free-tier services."}
+            ),
+        )
+
     def test_disables_all_credentials_for_implicated_app_when_service_is_exceeded(self) -> None:
         record = UsageRecord(
             usage_date=date(2026, 8, 26),
@@ -356,6 +365,11 @@ class RemediationTests(unittest.TestCase):
             result = maybe_limit_app_to_within_free_tier_project([record], [quota], identity_client)
 
         self.assertTrue(result.triggered)
+        identity_client.create_project.assert_called_once_with(
+            _managed_project_id("target-app"),
+            "Service Restriction - HERE TEST - target-app",
+            "Managed by usage-alert to restrict app target-app to within-free-tier services.",
+        )
         identity_client.update_project_settings.assert_called_once_with("hrn:project/ua-123", "thisProjectOnly")
         identity_client.add_project_resources.assert_called_once_with(
             "hrn:project/ua-123",
@@ -516,6 +530,11 @@ class RemediationTests(unittest.TestCase):
 
         self.assertTrue(result.triggered)
         identity_client.create_project.assert_not_called()
+        identity_client.update_project.assert_called_once_with(
+            "hrn:project/managed",
+            "Service Restriction - HERE TEST - target-app",
+            "Managed by usage-alert to restrict app target-app to within-free-tier services.",
+        )
         identity_client.remove_project_resource.assert_called_once_with("hrn:project/managed", fuel)
         identity_client.add_project_resources.assert_called_once_with("hrn:project/managed", [routing])
         identity_client.add_project_member.assert_called_once_with("hrn:project/managed", "hrn:app/target-app")
@@ -596,13 +615,18 @@ class RemediationTests(unittest.TestCase):
 
         self.assertTrue(result.triggered)
         self.assertIn("restored", result.message)
+        identity_client.update_project.assert_called_once_with(
+            "hrn:project/managed",
+            "Service Restriction - HERE TEST - target-app",
+            "Managed by usage-alert to restrict app target-app to within-free-tier services.",
+        )
         identity_client.add_project_resources.assert_called_once_with(
             "hrn:project/managed", [fuel, routing]
         )
         identity_client.add_project_member.assert_not_called()
         identity_client.set_default_scope.assert_called_once_with("hrn:app/target-app", "hrn:project/managed")
 
-    def test_project_limit_restores_managed_project_at_month_start_without_new_usage(self) -> None:
+    def test_project_limit_restores_legacy_managed_project_at_month_start_without_new_usage(self) -> None:
         identity_client = Mock()
         fuel = "hrn:here:service::olp-here:fuel-prices-3"
         routing = "hrn:here:service::olp-here:routing-8"
@@ -612,7 +636,6 @@ class RemediationTests(unittest.TestCase):
                 "id": _managed_project_id("target-app"),
                 "hrn": "hrn:project/managed",
                 "name": "HERE TEST",
-                "description": "Managed by usage-alert to restrict app target-app; Fuel Prices excluded.",
             }
         ]
         identity_client.list_apps.return_value = [
@@ -632,6 +655,42 @@ class RemediationTests(unittest.TestCase):
             result = maybe_limit_app_to_within_free_tier_project([], [], identity_client)
 
         self.assertTrue(result.triggered)
+        self.assertIn("restored", result.message)
+        identity_client.update_project.assert_called_once_with(
+            "hrn:project/managed",
+            "Service Restriction - HERE TEST - target-app",
+            "Managed by usage-alert to restrict app target-app to within-free-tier services.",
+        )
+        identity_client.add_project_resources.assert_called_once_with("hrn:project/managed", [fuel])
+        identity_client.set_default_scope.assert_called_once_with("hrn:app/target-app", "hrn:project/managed")
+
+    def test_project_limit_restores_services_when_project_metadata_update_fails(self) -> None:
+        identity_client = Mock()
+        fuel = "hrn:here:service::olp-here:fuel-prices-3"
+        routing = "hrn:here:service::olp-here:routing-8"
+        identity_client.list_external_service_resources.return_value = [fuel, routing]
+        identity_client.list_projects.return_value = [
+            {"id": _managed_project_id("target-app"), "hrn": "hrn:project/managed", "name": "HERE TEST"}
+        ]
+        identity_client.list_apps.return_value = [
+            {"id": "target-app", "hrn": "hrn:app/target-app", "name": "HERE TEST"}
+        ]
+        identity_client.list_project_resources.return_value = [
+            {"resource": routing, "type": "service", "relation": "reference"}
+        ]
+        identity_client.list_project_members.return_value = [{"member": "hrn:app/target-app"}]
+        identity_client.add_project_resources.return_value = []
+        identity_client.update_project.side_effect = HereClientError("HTTP 405")
+
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT": "true"},
+            clear=False,
+        ):
+            result = maybe_limit_app_to_within_free_tier_project([], [], identity_client)
+
+        self.assertTrue(result.triggered)
+        self.assertIn("metadata update failed", result.message)
         self.assertIn("restored", result.message)
         identity_client.add_project_resources.assert_called_once_with("hrn:project/managed", [fuel])
         identity_client.set_default_scope.assert_called_once_with("hrn:app/target-app", "hrn:project/managed")

@@ -85,3 +85,12 @@ class NotificationTests(unittest.TestCase):
             [{"unit": "transactions", "metric": "transactions", "quantity": 12_500}],
             payload["usage_summary"],
         )
+
+    def test_healthy_payload_includes_remediation_advisory(self) -> None:
+        payload = build_healthy_webhook_payload(
+            [],
+            "2026-09-01",
+            usage_date_utc="2026-09-01",
+            remediation_note="Project-based service restriction was restored for app target-app.",
+        )
+        self.assertIn("Project-based service restriction was restored", payload["note"])

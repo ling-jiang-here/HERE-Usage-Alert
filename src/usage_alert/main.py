@@ -105,8 +105,11 @@ def main() -> int:
             f"No daily usage records for {target_date.isoformat()}; no report written. "
             f"(raw API items: {raw_item_count}, normalized records: 0)"
         )
+        remediation = maybe_remediate_app_access([], [])
+        if remediation.message:
+            print(remediation.message)
         notified = notify_webhook(
-            [], [], target_date.isoformat(), usage_date_utc=target_date.isoformat()
+            [], [], target_date.isoformat(), [], remediation.message or None, target_date.isoformat()
         )
         print(f"Webhook event sent: {'yes' if notified else 'no'}")
         return 0 if notified else 1

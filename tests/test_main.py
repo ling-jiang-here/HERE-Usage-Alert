@@ -30,6 +30,63 @@ class MainTests(unittest.TestCase):
         self.assertEqual("critical", anomalies[0].severity)
         self.assertEqual("synthetic_webhook_test", records[0].metric)
 
+    def test_empty_daily_fetch_runs_service_access_recovery(self) -> None:
+        target_date = date(2026, 9, 1)
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "config").mkdir()
+            (root / "config" / "thresholds.json").write_text(
+                json.dumps(
+                    {
+                        "history_days": 30,
+                        "data_retention_days": 45,
+                        "report_retention_days": 60,
+                        "minimum_baseline_days": 14,
+                        "minimum_absolute_increase": 1000,
+                        "percentage_increase_threshold": 0.5,
+                        "robust_z_score_threshold": 3.5,
+                        "severity": {"warning_percentage": 0.5, "critical_percentage": 2.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "HERE_REALM_ID": "example",
+                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT": "true",
+                },
+                clear=False,
+            ):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps({"items": []})):
+                    with patch("usage_alert.main.maybe_remediate_app_access") as remediate:
+                        remediate.return_value.message = "Project-based service restriction was restored for app target-app."
+                        with patch("usage_alert.main.notify_webhook", return_value=True) as notify_webhook:
+                            with patch(
+                                "sys.argv",
+                                [
+                                    "usage_alert.main",
+                                    "--fetch",
+                                    "--date",
+                                    target_date.isoformat(),
+                                    "--root",
+                                    str(root),
+                                ],
+                            ):
+                                self.assertEqual(0, main())
+
+        remediate.assert_called_once_with([], [])
+        notify_webhook.assert_called_once_with(
+            [],
+            [],
+            target_date.isoformat(),
+            [],
+            "Project-based service restriction was restored for app target-app.",
+            target_date.isoformat(),
+        )
+
     def test_fetch_mode_persists_local_analysis_files_and_prunes_old_ones(self) -> None:
         target_date = date(2026, 8, 18)
         payload = {

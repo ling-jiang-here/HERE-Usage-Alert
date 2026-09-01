@@ -117,6 +117,20 @@ class HereIdentityClient(HereUsageClient):
             return response
         raise HereClientError("HERE Authorization API returned an unsupported project payload.")
 
+    def update_project(self, project_hrn: str, name: str, description: str) -> dict[str, object]:
+        payload = json.dumps({"name": name, "description": description}).encode("utf-8")
+        response = self._request_json(
+            Request(
+                f"{self.authz_base_url}/projects/{quote(project_hrn, safe='')}",
+                data=payload,
+                headers={**self._authorized_headers(), "Content-Type": "application/json"},
+                method="PATCH",
+            )
+        )
+        if isinstance(response, dict):
+            return response
+        raise HereClientError("HERE Authorization API returned an unsupported project payload.")
+
     def delete_project(self, project_hrn: str) -> None:
         request = Request(
             f"{self.authz_base_url}/projects/{quote(project_hrn, safe='')}",
@@ -363,13 +377,16 @@ def maybe_limit_app_to_within_free_tier_project(
         external_service_resources = set(client.list_external_service_resources())
         managed_projects = {}
         managed_project_apps = {}
+        apps = [_app_from_item(item) for item in client.list_apps()]
+        apps_by_id = {app["id"]: app for app in apps if app is not None}
+        project_ids_by_app = {_managed_project_id(app_id): app_id for app_id in apps_by_id}
         for project in client.list_projects():
             project_id = project.get("id")
             project_hrn = project.get("hrn")
             if not isinstance(project_id, str) or not isinstance(project_hrn, str):
                 continue
             managed_projects[project_id] = project
-            managed_app_id = _managed_app_id_from_project(project)
+            managed_app_id = _managed_app_id_from_project(project) or project_ids_by_app.get(project_id)
             if managed_app_id:
                 managed_project_apps[project_id] = managed_app_id
     except HereClientError as error:
@@ -394,7 +411,7 @@ def maybe_limit_app_to_within_free_tier_project(
 
         metric_list = ", ".join(metrics) if metrics else "no currently exceeded service"
         try:
-            app = _resolve_app(client, app_id)
+            app = apps_by_id.get(app_id) or _resolve_app(client, app_id)
         except HereClientError as error:
             messages.append(f"Project-based service restriction failed for app {app_id}: {error}")
             continue
@@ -428,15 +445,26 @@ def maybe_limit_app_to_within_free_tier_project(
         project_created = False
         project_hrn = ""
         try:
+            desired_project_name = _managed_project_name(app.get("name") or app_id, app_id)
+            desired_project_description = _managed_project_description(app_id)
             if existing_project is not None:
                 project = {
                     "id": project_id,
                     "hrn": str(existing_project["hrn"]),
-                    "name": str(existing_project.get("name") or app.get("name") or app_id),
+                    "name": desired_project_name,
                 }
             else:
                 project, project_created = _ensure_project_for_app(client, app_id, app.get("name") or app_id)
             project_hrn = project["hrn"]
+            if not project_created and (
+                existing_project is None
+                or existing_project.get("name") != desired_project_name
+                or existing_project.get("description") != desired_project_description
+            ):
+                try:
+                    client.update_project(project_hrn, desired_project_name, desired_project_description)
+                except HereClientError as error:
+                    messages.append(f"Managed project metadata update failed for app {app_id}: {error}")
             client.update_project_settings(project_hrn, "thisProjectOnly")
             unsupported_resources = _reconcile_project_resources(client, project_hrn, allowed_resources, project_created)
             _ensure_project_member(client, project_hrn, app["hrn"])
@@ -491,7 +519,7 @@ def _managed_app_id_from_project(project: dict[str, object]) -> str | None:
     prefix = "Managed by usage-alert to restrict app "
     if not isinstance(description, str) or not description.startswith(prefix):
         return None
-    app_id = description[len(prefix) :].split(";", 1)[0].strip()
+    app_id = description[len(prefix) :].split(" to ", 1)[0].split(";", 1)[0].strip()
     return app_id or None
 
 
@@ -542,18 +570,23 @@ def _unresolved_service_records(month_records: list[UsageRecord], app_id: str, m
 
 def _resolve_app(client: HereIdentityClient, app_id: str) -> dict[str, str]:
     for item in client.list_apps():
-        if item.get("id") != app_id:
-            continue
-        hrn = item.get("hrn")
-        if not isinstance(hrn, str) or not hrn.strip():
-            break
-        name = item.get("name")
-        return {
-            "id": app_id,
-            "hrn": hrn.strip(),
-            "name": name.strip() if isinstance(name, str) and name.strip() else app_id,
-        }
+        app = _app_from_item(item)
+        if app is not None and app["id"] == app_id:
+            return app
     raise HereClientError(f"HERE IAM could not resolve app {app_id} to an app HRN.")
+
+
+def _app_from_item(item: dict[str, object]) -> dict[str, str] | None:
+    app_id = item.get("id")
+    hrn = item.get("hrn")
+    if not isinstance(app_id, str) or not app_id.strip() or not isinstance(hrn, str) or not hrn.strip():
+        return None
+    name = item.get("name")
+    return {
+        "id": app_id.strip(),
+        "hrn": hrn.strip(),
+        "name": name.strip() if isinstance(name, str) and name.strip() else app_id.strip(),
+    }
 
 
 def _resolve_app_hrn(client: HereIdentityClient, app_id: str) -> str:
@@ -562,8 +595,8 @@ def _resolve_app_hrn(client: HereIdentityClient, app_id: str) -> str:
 
 def _ensure_project_for_app(client: HereIdentityClient, app_id: str, app_name: object) -> tuple[dict[str, str], bool]:
     project_id = _managed_project_id(app_id)
-    project_name = str(app_name).strip() or app_id
-    description = f"Managed by usage-alert to restrict app {app_id} to within-free-tier services."
+    project_name = _managed_project_name(app_name, app_id)
+    description = _managed_project_description(app_id)
     try:
         project = client.create_project(project_id, project_name, description)
         project_hrn = project.get("hrn")
@@ -613,6 +646,15 @@ def _cleanup_project_if_created(client: HereIdentityClient, project_hrn: str, pr
 
 def _managed_project_id(app_id: str) -> str:
     return f"ua-{hashlib.sha1((app_id + ':project-v2').encode('utf-8')).hexdigest()[:13]}"
+
+
+def _managed_project_name(app_name: object, app_id: str) -> str:
+    resolved_app_name = str(app_name).strip() or app_id
+    return f"Service Restriction - {resolved_app_name} - {app_id}"
+
+
+def _managed_project_description(app_id: str) -> str:
+    return f"Managed by usage-alert to restrict app {app_id} to within-free-tier services."
 
 
 def _blocked_service_resources(month_records: list[UsageRecord], app_id: str, metrics: tuple[str, ...]) -> set[str]:

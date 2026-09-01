@@ -90,12 +90,16 @@ def build_quota_alert_payload(
 
 
 def build_healthy_webhook_payload(
-    records: list[UsageRecord], report_path: str, usage_date_utc: str | None = None
+    records: list[UsageRecord], report_path: str, usage_date_utc: str | None = None,
+    remediation_note: str | None = None,
 ) -> dict[str, object]:
     if usage_date_utc is None:
         if not records:
             raise ValueError("A usage date is required when sending a healthy webhook without records")
         usage_date_utc = records[0].usage_date.isoformat()
+    note = "Usage monitoring completed successfully. No anomaly met the configured threshold."
+    if remediation_note:
+        note = f"{note} {remediation_note}"
     return {
         "event": "here_usage_healthy",
         "severity": "info",
@@ -107,7 +111,7 @@ def build_healthy_webhook_payload(
         ],
         "anomaly_count": 0,
         "report_path": report_path,
-        "note": "Usage monitoring completed successfully. No anomaly met the configured threshold.",
+        "note": note,
     }
 
 
@@ -127,7 +131,7 @@ def notify_webhook(
     elif quota_alerts:
         payload = build_quota_alert_payload(records, quota_alerts, report_path, remediation_note)
     else:
-        payload = build_healthy_webhook_payload(records, report_path, usage_date_utc)
+        payload = build_healthy_webhook_payload(records, report_path, usage_date_utc, remediation_note)
     body = json.dumps(payload, allow_nan=False).encode("utf-8")
     request = Request(
         webhook_url,
