@@ -444,6 +444,7 @@ def maybe_limit_app_to_within_free_tier_project(
 
         project_created = False
         project_hrn = ""
+        already_fully_restored = False
         try:
             desired_project_name = _managed_project_name(app.get("name") or app_id, app_id)
             desired_project_description = _managed_project_description(app_id)
@@ -456,6 +457,9 @@ def maybe_limit_app_to_within_free_tier_project(
             else:
                 project, project_created = _ensure_project_for_app(client, app_id, app.get("name") or app_id)
             project_hrn = project["hrn"]
+            if not metrics and not project_created:
+                current_resources = _project_service_resources(client.list_project_resources(project_hrn))
+                already_fully_restored = current_resources == set(allowed_resources)
             if not project_created and (
                 existing_project is None
                 or existing_project.get("name") != desired_project_name
@@ -477,7 +481,7 @@ def maybe_limit_app_to_within_free_tier_project(
             )
             continue
 
-        restricted_any_app = True
+        restricted_any_app = restricted_any_app or bool(metrics) or not already_fully_restored
         unavailable = (
             f" HERE skipped unavailable service resources: {', '.join(unsupported_resources)}."
             if unsupported_resources
@@ -489,7 +493,7 @@ def maybe_limit_app_to_within_free_tier_project(
                 f"Project {project.get('name') or app_id} preserves {len(allowed_resources) - len(unsupported_resources)} valid service resources, "
                 f"excludes {len(blocked_resources)} exceeded service resource(s), and is set as the app's restricted default project.{unavailable}"
             )
-        else:
+        elif not already_fully_restored:
             messages.append(
                 f"Project-based service restriction was restored for app {app_id}. "
                 f"Project {project.get('name') or app_id} now allows all valid service resources and remains the app's restricted default project.{unavailable}"

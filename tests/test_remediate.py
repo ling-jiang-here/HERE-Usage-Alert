@@ -694,3 +694,37 @@ class RemediationTests(unittest.TestCase):
         self.assertIn("restored", result.message)
         identity_client.add_project_resources.assert_called_once_with("hrn:project/managed", [fuel])
         identity_client.set_default_scope.assert_called_once_with("hrn:app/target-app", "hrn:project/managed")
+
+    def test_project_limit_does_not_reannounce_restore_when_already_fully_restored(self) -> None:
+        identity_client = Mock()
+        fuel = "hrn:here:service::olp-here:fuel-prices-3"
+        routing = "hrn:here:service::olp-here:routing-8"
+        identity_client.list_external_service_resources.return_value = [fuel, routing]
+        identity_client.list_projects.return_value = [
+            {"id": _managed_project_id("target-app"), "hrn": "hrn:project/managed", "name": "Service Restriction - HERE TEST - target-app"}
+        ]
+        identity_client.list_apps.return_value = [
+            {"id": "target-app", "hrn": "hrn:app/target-app", "name": "HERE TEST"}
+        ]
+        # Project already allows every valid service resource, so there is nothing to restore.
+        identity_client.list_project_resources.return_value = [
+            {"resource": fuel, "type": "service", "relation": "reference"},
+            {"resource": routing, "type": "service", "relation": "reference"},
+        ]
+        identity_client.list_project_members.return_value = [{"member": "hrn:app/target-app"}]
+        identity_client.add_project_resources.return_value = []
+
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT": "true"},
+            clear=False,
+        ):
+            result = maybe_limit_app_to_within_free_tier_project([], [], identity_client)
+
+        self.assertFalse(result.triggered)
+        self.assertNotIn("restored", result.message)
+        self.assertEqual("", result.message)
+
+
+if __name__ == "__main__":
+    unittest.main()

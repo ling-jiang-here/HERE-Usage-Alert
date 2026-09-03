@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-03
+
+### Fixed
+
+- Stopped project-based remediation from re-announcing "service restriction was restored" on every run once a managed app is already fully restored. The recovery note now fires only on the run where the project actually transitions back to allowing all valid service resources. This resolves the duplicate restore note sent for app `So9MjdlTqdm9g3PM9xfO` on both 2026-09-01 and 2026-09-02.
+- Kept `RemediationResult.triggered` as `False` on such idempotent no-op runs so no restoration is reported when nothing changed.
+
+### Tests
+
+- Added a regression test covering an existing managed project that already allows all valid service resources, asserting no restore note is emitted and `triggered` stays `False`.
+
 ## 2026-09-01
 
 ### Changed
