@@ -1,0 +1,79 @@
+{
+  "retrieved_at_utc": "2026-09-06T01:40:34.628860+00:00",
+  "rules": [
+    {
+      "id": "UsageAlertRule-1d0032a3-f7f9-406b-b85f-c35109784218",
+      "name": "Alert for App Id and auto suggest one",
+      "description": "The alert when the app id app1 crosses 20 requests for the auto suggest API.",
+      "queryConditions": [
+        {
+          "key": "featureId",
+          "value": "hrn:here:service::org66234717:search-autosuggest-7"
+        },
+        {
+          "key": "appId",
+          "value": "SG1F7zxL1Y7RTSlwPzKo"
+        },
+        {
+          "key": "realm",
+          "value": "org66234717"
+        }
+      ],
+      "usageThresholdConditions": [
+        {
+          "thresholdType": "absolute",
+          "threshold": 20.0,
+          "actions": [
+            "alert"
+          ]
+        }
+      ],
+      "timeRange": {
+        "duration": "daily"
+      },
+      "status": "active",
+      "emailNotifications": [
+        "ling.jiang@here.com",
+        "kyooryoo@hotmail.com"
+      ],
+      "webhookUrl": null
+    },
+    {
+      "id": "UsageAlertRule-9c644489-57ea-4ff7-a56e-04e89c438858",
+      "name": "Alert for App Id and auto suggest",
+      "description": "The alert when the app id 0KzvdRNvNZM4xMFJDveD crosses 5 requests for the auto suggest API.",
+      "queryConditions": [
+        {
+          "key": "featureId",
+          "value": "hrn:here:service::olp-here:search-opensearch-1"
+        },
+        {
+          "key": "appId",
+          "value": "0KzvdRNvNZM4xMFJDveD"
+        },
+        {
+          "key": "realm",
+          "value": "org66234717"
+        }
+      ],
+      "usageThresholdConditions": [
+        {
+          "thresholdType": "absolute",
+          "threshold": 5.0,
+          "actions": [
+            "alert"
+          ]
+        }
+      ],
+      "timeRange": {
+        "duration": "daily"
+      },
+      "status": "active",
+      "emailNotifications": [
+        "ling.jiang@here.com",
+        "kyooryoo@hotmail.com"
+      ],
+      "webhookUrl": "https://webhook.site/0e3be7b9-8801-48c4-9a47-b138cfb9145c"
+    }
+  ]
+}

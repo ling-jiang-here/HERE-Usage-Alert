@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import os
+from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,6 +16,13 @@ from usage_alert.storage import write_hourly_records
 
 
 class MainTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.rules_patcher = patch(
+            "usage_alert.main.HereUsageClient.fetch_usage_alert_rules",
+            return_value={"total": 0, "items": []},
+        )
+        self.rules_patcher.start()
+        self.addCleanup(self.rules_patcher.stop)
     def test_webhook_smoke_test_sends_synthetic_critical_anomaly(self) -> None:
         with TemporaryDirectory() as temporary_directory:
             with patch.dict(os.environ, {"ALERT_WEBHOOK_URL": "https://example.test/webhook"}, clear=False):
@@ -85,6 +94,7 @@ class MainTests(unittest.TestCase):
             [],
             "Project-based service restriction was restored for app target-app.",
             target_date.isoformat(),
+            [],
         )
 
     def test_fetch_mode_persists_local_analysis_files_and_prunes_old_ones(self) -> None:
@@ -166,7 +176,7 @@ class MainTests(unittest.TestCase):
             self.assertFalse((root / "reports" / "2026-05-19.md").exists())
             self.assertTrue((root / "reports" / "2026-06-25.md").exists())
             self.assertFalse((root / "artifacts").exists())
-            notify_webhook.assert_called_once_with([], unittest.mock.ANY, unittest.mock.ANY, [], None)
+            notify_webhook.assert_called_once_with([], unittest.mock.ANY, unittest.mock.ANY, [], None, None, [])
 
     def test_hourly_fetch_mode_skips_empty_completed_hour(self) -> None:
         with TemporaryDirectory() as temporary_directory:
@@ -209,7 +219,7 @@ class MainTests(unittest.TestCase):
                             ],
                         ):
                             self.assertEqual(0, main())
-            self.assertFalse((root / "data").exists())
+            self.assertFalse((root / "data" / "hourly").exists())
             self.assertFalse((root / "reports").exists())
             notify_webhook.assert_not_called()
             window_start, window_end = fetch_usage_window.call_args.args
@@ -524,3 +534,103 @@ class MainTests(unittest.TestCase):
             self.assertIn("The monitor is using credentials from this same app", remediation_note)
             identity_client.disable_api_key.assert_not_called()
             identity_client.disable_access_key.assert_not_called()
+
+    def test_rules_mode_refreshes_and_prints_imported_rules(self) -> None:
+        rules_payload = {
+            "total": 1,
+            "items": [
+                {
+                    "id": "UsageAlertRule-9",
+                    "name": "Alert for App Id and auto suggest",
+                    "description": "d",
+                    "queryConditions": [
+                        {"key": "featureId", "value": "hrn:here:service::olp-here:search-opensearch-1"},
+                        {"key": "appId", "value": "0KzvdRNvNZM4xMFJDveD"},
+                    ],
+                    "usageThresholdConditions": [
+                        {"thresholdType": "absolute", "threshold": 5, "actions": ["alert"]}
+                    ],
+                    "timeRange": {"duration": "daily"},
+                    "status": "active",
+                    "emailNotifications": ["a@b.com"],
+                    "webhookUrl": "https://webhook.site/x",
+                }
+            ],
+        }
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            with patch(
+                "usage_alert.main.HereUsageClient.fetch_usage_alert_rules",
+                return_value=rules_payload,
+            ):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "HERE_REALM_ID": "example",
+                        "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                        "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    },
+                    clear=False,
+                ):
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        with patch(
+                            "sys.argv", ["usage_alert.main", "--rules", "--root", str(root)]
+                        ):
+                            self.assertEqual(0, main())
+            text = output.getvalue()
+            self.assertIn("Stored usage alert rules (1):", text)
+            self.assertIn("Alert for App Id and auto suggest", text)
+            self.assertTrue((root / "data" / "usage-alert-rules.json").exists())
+
+    def test_test_rules_smoke_posts_rule_alerts_to_project_webhook_only(self) -> None:
+        rules_payload = {
+            "total": 1,
+            "items": [
+                {
+                    "id": "UsageAlertRule-9",
+                    "name": "Alert for App Id and auto suggest",
+                    "description": "d",
+                    "queryConditions": [
+                        {"key": "featureId", "value": "hrn:here:service::olp-here:search-opensearch-1"},
+                        {"key": "appId", "value": "0KzvdRNvNZM4xMFJDveD"},
+                    ],
+                    "usageThresholdConditions": [
+                        {"thresholdType": "absolute", "threshold": 5, "actions": ["alert"]}
+                    ],
+                    "timeRange": {"duration": "daily"},
+                    "status": "active",
+                    "emailNotifications": [],
+                }
+            ],
+        }
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            with patch(
+                "usage_alert.main.HereUsageClient.fetch_usage_alert_rules",
+                return_value=rules_payload,
+            ):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "HERE_REALM_ID": "example",
+                        "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
+                        "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                        "ALERT_WEBHOOK_URL": "https://example.test/webhook",
+                    },
+                    clear=False,
+                ):
+                    with patch("usage_alert.main.notify_webhook", return_value=True) as notify_webhook:
+                        with patch(
+                            "sys.argv", ["usage_alert.main", "--test-rules", "--root", str(root)]
+                        ):
+                            self.assertEqual(0, main())
+
+        anomalies, records, report_reference = notify_webhook.call_args.args[:3]
+        rule_alerts = notify_webhook.call_args.args[6]
+        self.assertEqual([], anomalies)
+        self.assertEqual("smoke-test-usage-alert-rules", report_reference)
+        self.assertEqual(1, len(records))
+        self.assertEqual(1, len(rule_alerts))
+        self.assertEqual(6.0, rule_alerts[0].observed)
+        self.assertEqual("0KzvdRNvNZM4xMFJDveD", records[0].app_id)

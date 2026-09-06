@@ -21,12 +21,22 @@ class HereClientError(RuntimeError):
 class HereUsageClient:
     def __init__(self) -> None:
         self.base_url = "https://usage.bam.api.here.com/v2"
-        self.realm_id = _required("HERE_REALM_ID")
-        self.client_id = _required("HERE_MONITOR_ACCESS_KEY_ID")
-        self.client_secret = _required("HERE_MONITOR_ACCESS_KEY_SECRET")
+        self.client_id = _required_any(("here.access.key.id", "HERE_MONITOR_ACCESS_KEY_ID"))
+        self.client_secret = _required_any(("here.access.key.secret", "HERE_MONITOR_ACCESS_KEY_SECRET"))
+        self.app_client_id = _optional(("here.client.id", "HERE_CLIENT_ID"))
         self.token_url = "https://account.api.here.com/oauth2/token"
+        self.account_base_url = "https://account.api.here.com"
+        self.bam_base_url = "https://customer.bam.api.here.com/v1"
+        self.usage_alert_base_url = "https://alert.usage.hereapi.com/v1"
         self.usage_path = "/usage/realms/{realmId}"
         self.channel_id = os.getenv("HERE_USAGE_API_CHANNEL_ID", "cold").strip() or "cold"
+        self._realm_id = os.getenv("HERE_REALM_ID", "").strip() or None
+
+    @property
+    def realm_id(self) -> str:
+        if self._realm_id is None:
+            self._realm_id = self._resolve_realm_id()
+        return self._realm_id
 
     def fetch_usage(self, usage_date: date) -> str:
         return self._fetch_usage_window(
@@ -84,9 +94,65 @@ class HereUsageClient:
             parameters["offset"] = next_offset
         return json.dumps({"items": items})
 
+    def fetch_bam_subscriptions(self) -> list[dict[str, object]]:
+        """Fetch BAM commercial subscriptions for the realm."""
+        token = self._access_token()
+        payload = self._request_json("HERE BAM Customer", f"{self.bam_base_url}/subscriptions", token, {"offset": 0, "limit": 100})
+        subscriptions = payload.get("subscriptions")
+        if not isinstance(subscriptions, list):
+            raise HereClientError("HERE BAM Customer API response did not include a subscriptions list.")
+        return subscriptions
+
+    def fetch_bam_subscription_products(self, subscription_id: str) -> list[dict[str, object]]:
+        """Fetch the licensed products of one BAM subscription."""
+        token = self._access_token()
+        path = f"/subscriptions/{quote(subscription_id, safe='')}/products"
+        payload = self._request_json("HERE BAM Customer", f"{self.bam_base_url}{path}", token)
+        products = payload.get("items")
+        if not isinstance(products, list):
+            raise HereClientError("HERE BAM Customer API response did not include a products list.")
+        return products
+
+    def fetch_app_authorization(self) -> dict[str, object]:
+        """Fetch the monitor app's IAM profile including its realm and any linked plans and policies."""
+        token = self._access_token()
+        return self._request_json("HERE Account", f"{self.account_base_url}/app/me/authorization", token)
+
+    def fetch_usage_alert_rules(self) -> dict[str, object]:
+        """Fetch the usage alert rules configured for the realm (named/partner accounts only)."""
+        token = self._access_token()
+        path = f"/realm/{quote(self.realm_id, safe='')}/rules"
+        return self._request_json("HERE Usage Alert", f"{self.usage_alert_base_url}{path}", token)
+
+    def _resolve_realm_id(self) -> str:
+        authorization = self.fetch_app_authorization()
+        app = authorization.get("app")
+        if not isinstance(app, dict):
+            raise HereClientError("HERE Account authorization response did not include app details.")
+        discovered_realm = app.get("realm")
+        if not isinstance(discovered_realm, str) or not discovered_realm:
+            raise HereClientError("HERE Account authorization response did not include a realm.")
+        discovered_client_id = app.get("clientId")
+        if self.app_client_id and isinstance(discovered_client_id, str) and discovered_client_id != self.app_client_id:
+            raise HereClientError(
+                f"Configured app client id {self.app_client_id} does not match the credential's app "
+                f"{discovered_client_id}; check here.client.id / HERE_CLIENT_ID."
+            )
+        return discovered_realm
+
     def _request_usage(self, url: str, token: str, parameters: dict[str, object]) -> dict[str, object]:
+        return self._request_json("HERE Usage", url, token, parameters)
+
+    def _request_json(
+        self,
+        service_label: str,
+        url: str,
+        token: str,
+        parameters: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        request_url = f"{url}?{urlencode(parameters)}" if parameters else url
         request = Request(
-            f"{url}?{urlencode(parameters)}",
+            request_url,
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/json",
@@ -100,12 +166,14 @@ class HereUsageClient:
             correlation_id = error.headers.get("X-Correlation-ID", "unavailable")
             details = _safe_error_details(error)
             raise HereClientError(
-                f"HERE Usage API request failed with HTTP {error.code}; {details} correlation ID: {correlation_id}."
+                f"{service_label} API request failed with HTTP {error.code}; {details} correlation ID: {correlation_id}."
             ) from error
         except (URLError, json.JSONDecodeError) as error:
-            raise HereClientError("HERE Usage API request failed; verify network access and response format.") from error
+            raise HereClientError(
+                f"{service_label} API request failed; verify network access and response format."
+            ) from error
         if not isinstance(payload, dict):
-            raise HereClientError("HERE Usage API returned an invalid JSON document.")
+            raise HereClientError(f"{service_label} API returned an invalid JSON document.")
         return payload
 
     def _access_token(self) -> str:
@@ -128,11 +196,19 @@ class HereUsageClient:
         return token
 
 
-def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
+def _required_any(names: tuple[str, ...]) -> str:
+    value = _optional(names)
     if not value:
-        raise HereClientError(f"Required environment variable {name} is not set.")
+        raise HereClientError(f"Required environment variable {' or '.join(names)} is not set.")
     return value
+
+
+def _optional(names: tuple[str, ...]) -> str:
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return ""
 
 
 def _oauth1_authorization_header(

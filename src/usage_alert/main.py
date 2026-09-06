@@ -6,16 +6,26 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from .client import HereUsageClient
+from .account import probe_account
+from .client import HereClientError, HereUsageClient
 from .config import load_detection_config, load_dotenv
 from .detect import detect_anomalies, detect_hourly_anomalies
 from .models import UsageRecord
-from .notify import notify_webhook
 from .normalize import normalize_records
+from .notify import build_rule_alert_payload, notify_webhook
 from .quota import evaluate_month_to_date, load_free_tiers
 from .remediate import maybe_remediate_app_access
 from .report import render_daily_report, render_hourly_report, write_daily_report, write_hourly_report
-from .storage import prune_daily_files, prune_hourly_files, read_records, write_daily_records, write_hourly_records
+from .rules import SavedUsageAlertRules, evaluate_usage_alert_rules, parse_usage_alert_rules, synthetic_usage_record_for_rule
+from .storage import (
+    prune_daily_files,
+    prune_hourly_files,
+    read_records,
+    read_usage_alert_rules_file,
+    write_daily_records,
+    write_hourly_records,
+    write_usage_alert_rules_file,
+)
 
 
 def main() -> int:
@@ -26,10 +36,45 @@ def main() -> int:
     source.add_argument("--input", type=Path, help="Recorded JSON response using the temporary fixture contract.")
     source.add_argument("--fetch", action="store_true", help="Fetch a live response using the configured HERE client.")
     source.add_argument("--test-webhook", action="store_true", help="Send one synthetic webhook smoke-test event.")
+    source.add_argument(
+        "--check-account",
+        action="store_true",
+        help="Classify the realm as developer or named/partner using BAM commercial subscriptions.",
+    )
+    source.add_argument(
+        "--rules",
+        action="store_true",
+        help="Refresh the imported usage alert rules from the HERE Usage Alert API and print them.",
+    )
+    source.add_argument(
+        "--test-rules",
+        action="store_true",
+        help=(
+            "Smoke-test the imported usage alert rules with synthetic crossing usage and POST a "
+            "webhook to the project endpoint only."
+        ),
+    )
     parser.add_argument("--root", type=Path, default=Path("."), help="Project root for data and reports.")
     arguments = parser.parse_args()
 
     load_dotenv(arguments.root / ".env")
+    if arguments.check_account:
+        probe = probe_account(HereUsageClient())
+        print(f"Account type: {probe.account_type}")
+        print(f"Reason: {probe.reason}")
+        print(f"Active subscriptions: {probe.active_subscription_count}")
+        print(f"Terminated subscriptions: {probe.terminated_subscription_count}")
+        print(f"Monitor app IAM plans: {probe.monitor_app_plan_count}")
+        if probe.products:
+            print("Active products:")
+            for product in probe.products:
+                developer = ", developer product" if product.is_developer else ", commercial product"
+                print(f"  - {product.name} (subscription {product.subscription_id}){developer}")
+        return 0
+    if arguments.rules:
+        return _print_usage_alert_rules(HereUsageClient(), arguments.root)
+    if arguments.test_rules:
+        return _smoke_test_usage_alert_rules(HereUsageClient(), arguments.root)
     target_date = arguments.date or datetime.now(timezone.utc).date() - timedelta(days=1)
     if arguments.test_webhook:
         test_anomaly = _synthetic_test_anomaly()
@@ -40,15 +85,17 @@ def main() -> int:
         window_end = datetime.now(timezone.utc).replace(microsecond=0)
         window_start = window_end - timedelta(minutes=65)
         target_hour = window_end.replace(minute=0, second=0, microsecond=0)
+        client = HereUsageClient()
         config = load_detection_config(arguments.root / "config" / "thresholds.json")
         if arguments.fetch:
-            raw_payload = HereUsageClient().fetch_usage_window(window_start, window_end)
+            raw_payload = client.fetch_usage_window(window_start, window_end)
             payload = json.loads(raw_payload)
         else:
             payload = json.loads(arguments.input.read_text(encoding="utf-8"))
         raw_item_count = len(payload.get("items", payload.get("records", []))) if isinstance(payload, dict) else len(payload)
         records = normalize_records(payload, preserve_hours=True)
         hourly_records = _aggregate_hourly_window_records(records, target_hour)
+        saved_rules = _load_usage_alert_rules(client, arguments.root / "data" / "usage-alert-rules.json")
         if not hourly_records:
             print(
                 "No hourly usage records from "
@@ -67,27 +114,32 @@ def main() -> int:
             record for record in all_records
             if record.usage_date.year == target_hour.year and record.usage_date.month == target_hour.month
         ]
+        rule_records = [record for record in all_records if record.usage_date == target_hour.date()]
+        rule_alerts = evaluate_usage_alert_rules(rule_records, saved_rules.rules)
         quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
         quota_alerts = [quota for quota in quota_statuses if quota.status == "EXCEEDED"]
         remediation = maybe_remediate_app_access(month_records, quota_alerts)
         if remediation.message:
             print(remediation.message)
-        if not anomalies and not quota_alerts:
+        if rule_alerts:
+            print(f"Usage alert rule thresholds matched: {len(rule_alerts)}")
+        if not anomalies and not quota_alerts and not rule_alerts:
             notified = notify_webhook([], hourly_records, target_hour.isoformat())
             print(f"No hourly anomaly for {target_hour.isoformat()}; no report written.")
             print(f"Webhook event sent: {'yes' if notified else 'no'}")
             return 0
-        report = render_hourly_report(hourly_records, anomalies, quota_alerts, remediation.message or None)
+        report = render_hourly_report(hourly_records, anomalies, quota_alerts, remediation.message or None, rule_alerts)
         report_path = write_hourly_report(report, arguments.root / "reports", target_hour)
         prune_hourly_files(arguments.root / "reports" / "hourly", target_hour, config.report_retention_days, ".md")
         report_reference = str(report_path)
         print(f"Wrote hourly anomaly report: {report_path}")
-        notified = notify_webhook(anomalies, hourly_records, report_reference, quota_alerts, remediation.message or None)
+        notified = notify_webhook(anomalies, hourly_records, report_reference, quota_alerts, remediation.message or None, None, rule_alerts)
         print(f"Webhook event sent: {'yes' if notified else 'no'}")
         return 0
     config = load_detection_config(arguments.root / "config" / "thresholds.json")
+    client = HereUsageClient()
     if arguments.fetch:
-        raw_payload = HereUsageClient().fetch_usage(target_date)
+        raw_payload = client.fetch_usage(target_date)
         payload = json.loads(raw_payload)
     else:
         payload = json.loads(arguments.input.read_text(encoding="utf-8"))
@@ -95,6 +147,7 @@ def main() -> int:
     raw_item_count = len(payload.get("items", payload.get("records", []))) if isinstance(payload, dict) else len(payload)
     records = normalize_records(payload)
     daily_records = [record for record in records if record.usage_date == target_date]
+    saved_rules = _load_usage_alert_rules(client, arguments.root / "data" / "usage-alert-rules.json")
     if not daily_records:
         if records:
             observed_dates = ", ".join(sorted({record.usage_date.isoformat() for record in records}))
@@ -109,7 +162,7 @@ def main() -> int:
         if remediation.message:
             print(remediation.message)
         notified = notify_webhook(
-            [], [], target_date.isoformat(), [], remediation.message or None, target_date.isoformat()
+            [], [], target_date.isoformat(), [], remediation.message or None, target_date.isoformat(), []
         )
         print(f"Webhook event sent: {'yes' if notified else 'no'}")
         return 0 if notified else 1
@@ -118,6 +171,7 @@ def main() -> int:
     write_daily_records(daily_records, curated_directory)
     prune_daily_files(curated_directory, target_date, max(config.history_days, config.data_retention_days), ".csv")
     all_records = history + daily_records
+    rule_alerts = evaluate_usage_alert_rules(daily_records, saved_rules.rules)
     anomalies = detect_anomalies(all_records, target_date, config)
     threshold, free_tiers, data_io_free_gb = load_free_tiers(arguments.root / "config" / "free_tiers.json")
     month_records = [
@@ -129,14 +183,72 @@ def main() -> int:
     remediation = maybe_remediate_app_access(month_records, quota_alerts)
     if remediation.message:
         print(remediation.message)
-    report = render_daily_report(daily_records, anomalies, quota_statuses, remediation.message or None)
+    if rule_alerts:
+        print(f"Usage alert rule thresholds matched: {len(rule_alerts)}")
+    report = render_daily_report(
+        daily_records, anomalies, quota_statuses, remediation.message or None, rule_alerts
+    )
     report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
     prune_daily_files(arguments.root / "reports", target_date, config.report_retention_days, ".md")
     report_reference = str(report_path)
     print(f"Wrote report: {report_path}")
     print(f"Anomalies: {len(anomalies)}")
-    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts, remediation.message or None)
+    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts, remediation.message or None, None, rule_alerts)
     print(f"Webhook event sent: {'yes' if notified else 'no'}")
+    return 0 if notified else 1
+
+
+def _load_usage_alert_rules(client: HereUsageClient, stored_path: Path) -> SavedUsageAlertRules:
+    """Refresh the imported usage alert rules, falling back to what is stored in the repository."""
+    try:
+        payload = client.fetch_usage_alert_rules()
+        rules = parse_usage_alert_rules(payload)
+        saved = SavedUsageAlertRules(datetime.now(timezone.utc), tuple(rules))
+        write_usage_alert_rules_file(saved, stored_path)
+        print(f"Refreshed {len(rules)} usage alert rules.")
+        return saved
+    except HereClientError as error:
+        print(f"Usage alert rules refresh failed; {error}")
+    stored = read_usage_alert_rules_file(stored_path)
+    if stored is not None:
+        print(f"Using {len(stored.rules)} stored usage alert rules.")
+        return stored
+    return SavedUsageAlertRules(None, ())
+
+
+def _print_usage_alert_rules(client: HereUsageClient, root: Path) -> int:
+    saved = _load_usage_alert_rules(client, root / "data" / "usage-alert-rules.json")
+    if not saved.rules:
+        print("No usage alert rules configured for this realm.")
+        return 0
+    print(f"Stored usage alert rules ({len(saved.rules)}):")
+    for rule in saved.rules:
+        apps = ", ".join(sorted({c.value for c in rule.query_conditions if c.key == "appId" and c.value}))
+        features = ", ".join(sorted({c.value for c in rule.query_conditions if c.key == "featureId" and c.value}))
+        threshold = rule.absolute_threshold
+        threshold_text = f", threshold {threshold:g}" if threshold is not None else ""
+        state = "active" if rule.is_active else "inactive"
+        print(f"- {rule.name} [{state}{threshold_text}]: appId {apps or '-'}, featureId {features or '-'}")
+    return 0
+
+
+def _smoke_test_usage_alert_rules(client: HereUsageClient, root: Path) -> int:
+    saved = _load_usage_alert_rules(client, root / "data" / "usage-alert-rules.json")
+    eligible = [rule for rule in saved.rules if rule.is_active and rule.absolute_threshold is not None]
+    if not eligible:
+        print("No active usage alert rules with an absolute threshold to smoke test.")
+        return 0
+    smoke_day = datetime.now(timezone.utc).date()
+    records = [synthetic_usage_record_for_rule(rule, smoke_day) for rule in eligible]
+    rule_alerts = evaluate_usage_alert_rules(records, saved.rules)
+    payload = build_rule_alert_payload(
+        records, rule_alerts, "smoke-test-usage-alert-rules", usage_date_utc=smoke_day.isoformat()
+    )
+    print(json.dumps(payload, indent=2))
+    notified = notify_webhook(
+        [], records, "smoke-test-usage-alert-rules", [], None, smoke_day.isoformat(), rule_alerts
+    )
+    print(f"\nWebhook event sent: {'yes' if notified else 'no'}")
     return 0 if notified else 1
 
 

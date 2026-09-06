@@ -6,11 +6,12 @@ from pathlib import Path
 
 from .models import Anomaly, UsageRecord
 from .quota import QuotaStatus
+from .rules import RuleAlert
 
 
 def render_daily_report(
     records: list[UsageRecord], anomalies: list[Anomaly], quota_statuses: list[QuotaStatus] | None = None,
-    remediation_note: str | None = None,
+    remediation_note: str | None = None, rule_alerts: list[RuleAlert] | None = None,
 ) -> str:
     usage_date = records[0].usage_date.isoformat() if records else "unknown"
     usage_summary = summarize_usage(records)
@@ -59,6 +60,7 @@ def render_daily_report(
             remediation_note,
             "",
         ])
+    _append_rule_alerts_section(lines, rule_alerts)
     lines.extend([
         "## Anomalies",
         "",
@@ -113,7 +115,7 @@ def write_daily_report(contents: str, directory: Path, usage_date: str) -> Path:
 
 def render_hourly_report(
     records: list[UsageRecord], anomalies: list[Anomaly], quota_alerts: list[QuotaStatus] | None = None,
-    remediation_note: str | None = None,
+    remediation_note: str | None = None, rule_alerts: list[RuleAlert] | None = None,
 ) -> str:
     usage_hour = records[0].usage_hour_utc.isoformat() if records and records[0].usage_hour_utc else "unknown"
     lines = [f"# HERE Usage Anomaly: {usage_hour}", "", f"- Anomalies: {len(anomalies)}", ""]
@@ -135,7 +137,26 @@ def render_hourly_report(
             )
     if remediation_note:
         lines.extend(["", "## Remediation Advisory", "", remediation_note])
+    _append_rule_alerts_section(lines, rule_alerts)
     return "\n".join(lines) + "\n"
+
+
+def _append_rule_alerts_section(lines: list[str], rule_alerts: list[RuleAlert] | None) -> None:
+    rule_alerts = rule_alerts or []
+    if not rule_alerts:
+        return
+    lines.extend([
+        "## Usage Alert Rules",
+        "",
+        "| Rule | App | Feature | Threshold | Observed | Unit |",
+        "| --- | --- | --- | ---: | ---: | --- |",
+    ])
+    for alert in rule_alerts:
+        lines.append(
+            f"| {alert.rule.name} | {alert.app_id or '-'} | {alert.feature_id or '-'} | "
+            f"{format_quantity(alert.threshold)} | {format_quantity(alert.observed)} | {alert.unit} |"
+        )
+    lines.append("")
 
 
 def write_hourly_report(contents: str, directory: Path, usage_hour: datetime) -> Path:

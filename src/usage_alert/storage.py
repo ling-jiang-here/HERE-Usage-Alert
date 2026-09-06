@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import UsageRecord
+from .rules import SavedUsageAlertRules
 
 
 HEADERS = (
@@ -126,4 +128,29 @@ def prune_hourly_files(directory: Path, latest_hour: datetime, keep_days: int, s
             path.unlink(missing_ok=True)
             removed.append(path)
     return removed
+
+
+def write_usage_alert_rules_file(saved: SavedUsageAlertRules, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(".tmp")
+    temporary_path.write_text(
+        json.dumps(saved.to_dict(), indent=2) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary_path, path)
+    return path
+
+
+def read_usage_alert_rules_file(path: Path) -> SavedUsageAlertRules | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return SavedUsageAlertRules.from_dict(payload)
+    except (ValueError, TypeError, KeyError):
+        return None
 
