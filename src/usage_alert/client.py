@@ -21,8 +21,8 @@ class HereClientError(RuntimeError):
 class HereUsageClient:
     def __init__(self) -> None:
         self.base_url = "https://usage.bam.api.here.com/v2"
-        self.client_id = _required_any(("here.access.key.id", "HERE_MONITOR_ACCESS_KEY_ID"))
-        self.client_secret = _required_any(("here.access.key.secret", "HERE_MONITOR_ACCESS_KEY_SECRET"))
+        self.client_id = _required_any(("here.access.key.id", "HERE_ACCESS_KEY_ID"))
+        self.client_secret = _required_any(("here.access.key.secret", "HERE_ACCESS_KEY_SECRET"))
         self.app_client_id = _optional(("here.client.id", "HERE_CLIENT_ID"))
         self.token_url = "https://account.api.here.com/oauth2/token"
         self.account_base_url = "https://account.api.here.com"
