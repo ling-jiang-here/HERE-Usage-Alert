@@ -52,7 +52,7 @@ class RemediationTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "monitor-client-id",
+                "HERE_ACCESS_KEY_ID": "monitor-client-id",
             },
             clear=False,
         ):
@@ -115,7 +115,7 @@ class RemediationTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "monitor-client-id",
+                "HERE_ACCESS_KEY_ID": "monitor-client-id",
             },
             clear=False,
         ):
@@ -151,7 +151,7 @@ class RemediationTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "monitor-client-id",
+                "HERE_ACCESS_KEY_ID": "monitor-client-id",
             },
             clear=False,
         ):
@@ -184,7 +184,7 @@ class RemediationTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "client-id-1",
+                "HERE_ACCESS_KEY_ID": "client-id-1",
             },
             clear=False,
         ):
@@ -303,7 +303,7 @@ class RemediationTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "monitor-client-id",
+                "HERE_ACCESS_KEY_ID": "monitor-client-id",
             },
             clear=False,
         ):
@@ -358,7 +358,7 @@ class RemediationTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "monitor-key",
+                "HERE_ACCESS_KEY_ID": "monitor-key",
             },
             clear=False,
         ):
@@ -424,7 +424,7 @@ class RemediationTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "monitor-key",
+                "HERE_ACCESS_KEY_ID": "monitor-key",
             },
             clear=False,
         ):
@@ -480,7 +480,7 @@ class RemediationTests(unittest.TestCase):
             {
                 "HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT": "true",
                 "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
-                "HERE_MONITOR_ACCESS_KEY_ID": "monitor-key",
+                "HERE_ACCESS_KEY_ID": "monitor-key",
             },
             clear=False,
         ):

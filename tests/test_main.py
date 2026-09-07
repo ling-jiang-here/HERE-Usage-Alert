@@ -63,8 +63,8 @@ class MainTests(unittest.TestCase):
                 os.environ,
                 {
                     "HERE_REALM_ID": "example",
-                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
                     "HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT": "true",
                 },
                 clear=False,
@@ -149,8 +149,8 @@ class MainTests(unittest.TestCase):
                 os.environ,
                 {
                     "HERE_REALM_ID": "example",
-                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -201,8 +201,8 @@ class MainTests(unittest.TestCase):
                 os.environ,
                 {
                     "HERE_REALM_ID": "example",
-                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -271,8 +271,8 @@ class MainTests(unittest.TestCase):
                 os.environ,
                 {
                     "HERE_REALM_ID": "example",
-                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -340,8 +340,8 @@ class MainTests(unittest.TestCase):
                 os.environ,
                 {
                     "HERE_REALM_ID": "example",
-                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -429,8 +429,8 @@ class MainTests(unittest.TestCase):
                 os.environ,
                 {
                     "HERE_REALM_ID": "example",
-                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
                 },
                 clear=False,
             ):
@@ -499,8 +499,8 @@ class MainTests(unittest.TestCase):
                 os.environ,
                 {
                     "HERE_REALM_ID": "example",
-                    "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                    "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
                     "HERE_AUTO_DISABLE_APP_CREDENTIALS": "true",
                 },
                 clear=False,
@@ -567,8 +567,8 @@ class MainTests(unittest.TestCase):
                     os.environ,
                     {
                         "HERE_REALM_ID": "example",
-                        "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                        "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                        "HERE_ACCESS_KEY_ID": "client-id",
+                        "HERE_ACCESS_KEY_SECRET": "client-secret",
                     },
                     clear=False,
                 ):
@@ -614,8 +614,8 @@ class MainTests(unittest.TestCase):
                     os.environ,
                     {
                         "HERE_REALM_ID": "example",
-                        "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                        "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                        "HERE_ACCESS_KEY_ID": "client-id",
+                        "HERE_ACCESS_KEY_SECRET": "client-secret",
                         "ALERT_WEBHOOK_URL": "https://example.test/webhook",
                     },
                     clear=False,

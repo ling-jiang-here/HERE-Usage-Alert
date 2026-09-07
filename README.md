@@ -4,7 +4,7 @@ Scheduled, organization-wide HERE usage monitoring with no hosted database or da
 
 ## Quick Start
 
-1. Copy [.env.example](.env.example) to `.env` and set `here.client.id`, `here.access.key.id`, and `here.access.key.secret`. `HERE_REALM_ID` is not required: the client discovers the realm from the shared app credential by introspecting `GET /app/me/authorization` on the HERE Account API. Setting `HERE_REALM_ID` still overrides discovery, and the legacy `HERE_CLIENT_ID`, `HERE_MONITOR_ACCESS_KEY_ID`, and `HERE_MONITOR_ACCESS_KEY_SECRET` names remain supported (the lowercase canonical names take precedence when both are set). The example also includes optional remediation and alerting settings.
+1. Copy [.env.example](.env.example) to `.env` and set `here.client.id`, `here.access.key.id`, and `here.access.key.secret`. `HERE_REALM_ID` is not required: the client discovers the realm from the shared app credential by introspecting `GET /app/me/authorization` on the HERE Account API. Setting `HERE_REALM_ID` still overrides discovery, and the legacy `HERE_CLIENT_ID`, `HERE_ACCESS_KEY_ID`, and `HERE_ACCESS_KEY_SECRET` names remain supported (the lowercase canonical names take precedence when both are set). The example also includes optional remediation and alerting settings.
 2. Configure optional remediation using the [Remediation flags](#remediation-flags) below.
 3. Run the test suite:
 
@@ -80,6 +80,17 @@ Project mode requires HERE permissions to read and manage the target app and pro
 
 Daily and hourly usage data are generated the same way for local runs and scheduled runs. The project prunes older files automatically: reports are kept for the last 90 days, and analysis data is retained only as long as needed for the configured history window, with a 90-day floor.
 
+## GitLab CI
+
+The project repository at [main.gitlab.in.here.com/jiang1/usage-monitor](https://main.gitlab.in.here.com/jiang1/usage-monitor) runs the monitor on a schedule via [.gitlab-ci.yml](.gitlab-ci.yml):
+
+- `usage_monitor_daily`: daily usage fetch and analysis (optional `USAGE_DATE`, optional `TEST_WEBHOOK` smoke test).
+- `usage_monitor_hourly`: hourly check of the last 65 minutes.
+
+Both jobs run in the `python:3.12` image, read credentials from GitLab CI/CD variables, and auto-commit generated `data/`/`reports/` changes back to the current branch using the `CI_JOB_TOKEN` push URL.
+
+Configure these CI/CD variables under **Settings → CI/CD → Variables**: masked variable `HERE_ACCESS_KEY_SECRET`, and variables `HERE_ACCESS_KEY_ID`, `HERE_CLIENT_ID`, `ALERT_WEBHOOK_URL` (plus optional `HERE_AUTO_DISABLE_APP_CREDENTIALS` and `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`). Set up two pipeline schedules with `RUN_TYPE=daily` and `RUN_TYPE=hourly` under **Settings → CI/CD → Schedules**.
+
 ## GitHub Actions
 
 Two workflows run the same CLI on a schedule and can also be dispatched manually:
@@ -87,9 +98,9 @@ Two workflows run the same CLI on a schedule and can also be dispatched manually
 - [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for both alerting and healthy completion events.
 - [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks usage from the last 65 minutes, stores the rolling-window result under the current UTC hour, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for alerting and healthy completion events. It still skips markdown report generation when the checked window is healthy.
 
-GitHub repository secrets and variables names cannot contain dots, so the workflows pass the credentials under the legacy `HERE_*` names and the client falls back to them in CI. Add this repository secret: `HERE_MONITOR_ACCESS_KEY_SECRET`.
+GitHub repository secrets and variables names cannot contain dots, so the workflows read the credentials from repository variables/secrets and pass them into the job under the canonical lowercase names. Add this repository secret: `HERE_ACCESS_KEY_SECRET`.
 
-Add these repository variables: `HERE_CLIENT_ID`, `HERE_MONITOR_ACCESS_KEY_ID`, `HERE_AUTO_DISABLE_APP_CREDENTIALS`, `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`, `ALERT_WEBHOOK_URL`. The realm is auto-discovered in CI, so no `HERE_REALM_ID` variable is needed.
+Add these repository variables: `HERE_CLIENT_ID`, `HERE_ACCESS_KEY_ID`, `HERE_AUTO_DISABLE_APP_CREDENTIALS`, `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`, `ALERT_WEBHOOK_URL`. The realm is auto-discovered in CI, so no `HERE_REALM_ID` variable is needed.
 
 To verify webhook delivery without querying HERE, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
 

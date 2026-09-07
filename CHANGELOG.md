@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-07
+
+### Added
+
+- Added a GitLab CI/CD pipeline (`.gitlab-ci.yml`) running in the `python:3.12` image. `usage_monitor_daily` fetches and analyzes the requested/completed UTC usage day (`--fetch`, optional `USAGE_DATE`, optional `TEST_WEBHOOK` smoke test) and `usage_monitor_hourly` checks the last 65 minutes (`--fetch --hourly`). Both jobs run `load_dotenv()`-independent of any `.env` file, read credentials from GitLab CI/CD variables (`HERE_ACCESS_KEY_ID`, `HERE_ACCESS_KEY_SECRET`, `HERE_CLIENT_ID`, `ALERT_WEBHOOK_URL`, remediation flags), and auto-commit generated `data/` and `reports/` changes back to the current branch using the `CI_JOB_TOKEN` push URL. Jobs are gated on scheduled `RUN_TYPE` (`daily` or `hourly`).
+
+### Changed
+
+- Renamed the legacy fallback credential environment variables from `HERE_MONITOR_ACCESS_KEY_ID`/`HERE_MONITOR_ACCESS_KEY_SECRET` to `HERE_ACCESS_KEY_ID`/`HERE_ACCESS_KEY_SECRET` in `client.py` (canonical lowercase `here.access.key.id`/`here.access.key.secret` names take precedence when both are set).
+- GitHub Actions workflows `usage-monitor.yml` and `usage-monitor-hourly.yml` now pass the canonical lowercase names `here.client.id`, `here.access.key.id`, and `here.access.key.secret` into the job environment (from `HERE_CLIENT_ID`, `HERE_ACCESS_KEY_ID` repo variables and `HERE_ACCESS_KEY_SECRET` secret), instead of the legacy `HERE_MONITOR_*` names.
+- Updated `.env.example` and README to document `HERE_ACCESS_KEY_ID`/`HERE_ACCESS_KEY_SECRET` as the legacy CI forms (the old `HERE_MONITOR_*` names are no longer read by the client). Updated the GitHub Actions setup section to reference the renamed variables and to point to the GitLab CI as the primary scheduled runner.
+
+### Tests
+
+- Manually verified the GitLab CI/CD pipeline and schedules on `https://main.gitlab.in.here.com/jiang1/usage-monitor`: both daily and hourly scheduled jobs run and complete successfully, credentials are injected from CI/CD variables, and generated `data/`/`reports/` changes are committed back to `main` by the jobs.
+
 ## 2026-09-06
 
 ### Added

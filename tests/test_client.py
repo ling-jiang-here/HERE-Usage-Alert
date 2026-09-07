@@ -23,8 +23,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "realm-id",
-                "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                "HERE_ACCESS_KEY_ID": "client-id",
+                "HERE_ACCESS_KEY_SECRET": "client-secret",
             },
             clear=False,
         ):
@@ -52,8 +52,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "realm-id",
-                "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                "HERE_ACCESS_KEY_ID": "client-id",
+                "HERE_ACCESS_KEY_SECRET": "client-secret",
             },
             clear=False,
         ):
@@ -78,8 +78,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "realm-id",
-                "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                "HERE_ACCESS_KEY_ID": "client-id",
+                "HERE_ACCESS_KEY_SECRET": "client-secret",
             },
             clear=False,
         ):
@@ -106,8 +106,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "realm-id",
-                "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                "HERE_ACCESS_KEY_ID": "client-id",
+                "HERE_ACCESS_KEY_SECRET": "client-secret",
             },
             clear=False,
         ):
@@ -131,8 +131,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "realm-id",
-                "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                "HERE_ACCESS_KEY_ID": "client-id",
+                "HERE_ACCESS_KEY_SECRET": "client-secret",
             },
             clear=False,
         ):
@@ -152,8 +152,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "realm-id",
-                "HERE_MONITOR_ACCESS_KEY_ID": "client-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "client-secret",
+                "HERE_ACCESS_KEY_ID": "client-id",
+                "HERE_ACCESS_KEY_SECRET": "client-secret",
             },
             clear=False,
         ):
@@ -232,8 +232,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "realm-id",
-                "HERE_MONITOR_ACCESS_KEY_ID": "",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "",
+                "HERE_ACCESS_KEY_ID": "",
+                "HERE_ACCESS_KEY_SECRET": "",
                 "here.access.key.id": "lower-key-id",
                 "here.access.key.secret": "lower-key-secret",
                 "here.client.id": "lower-app-client",
@@ -251,8 +251,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "legacy-realm",
-                "HERE_MONITOR_ACCESS_KEY_ID": "legacy-key-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "legacy-key-secret",
+                "HERE_ACCESS_KEY_ID": "legacy-key-id",
+                "HERE_ACCESS_KEY_SECRET": "legacy-key-secret",
                 "here.access.key.id": "canonical-key-id",
                 "here.access.key.secret": "canonical-key-secret",
                 "here.client.id": "canonical-app-client",
@@ -271,8 +271,8 @@ class HereUsageClientTests(unittest.TestCase):
             os.environ,
             {
                 "HERE_REALM_ID": "legacy-realm",
-                "HERE_MONITOR_ACCESS_KEY_ID": "legacy-key-id",
-                "HERE_MONITOR_ACCESS_KEY_SECRET": "legacy-key-secret",
+                "HERE_ACCESS_KEY_ID": "legacy-key-id",
+                "HERE_ACCESS_KEY_SECRET": "legacy-key-secret",
                 "here.access.key.id": "",
                 "here.access.key.secret": "",
             },

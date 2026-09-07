@@ -778,4 +778,4 @@ def _item_matches_monitor_access_key(item: dict[str, object]) -> bool:
 
 
 def _monitor_access_key_id() -> str:
-    return (os.getenv("here.access.key.id") or os.getenv("HERE_MONITOR_ACCESS_KEY_ID", "")).strip()
+    return (os.getenv("here.access.key.id") or os.getenv("HERE_ACCESS_KEY_ID", "")).strip()
