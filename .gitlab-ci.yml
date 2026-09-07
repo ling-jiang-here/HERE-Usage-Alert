@@ -45,8 +45,11 @@ usage_monitor_daily:
 
       git commit -m "Update usage data and reports"
       git pull --rebase origin "$CI_COMMIT_REF_NAME"
+      # git push \
+      #   https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git \
+      #   HEAD:$CI_COMMIT_REF_NAME
       git push \
-        https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git \
+        https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git \
         HEAD:$CI_COMMIT_REF_NAME
 
   rules:
