@@ -1,0 +1,2 @@
+usage_date_utc,metric,quantity,unit,feature_id,app_id,project_id,billing_tag,category,dimension_key,source_retrieved_at_utc,usage_hour_utc
+2026-09-07,Data IO,0.0,GB,hrn:here:data-transfer::olp-here:io,0KzvdRNvNZM4xMFJDveD,,,DataStorage,"{""app_id"":""0KzvdRNvNZM4xMFJDveD"",""feature_id"":""hrn:here:data-transfer::olp-here:io""}",2026-09-07T22:02:23.976270+00:00,2026-09-07T22:00:00+00:00
