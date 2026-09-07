@@ -1,0 +1,83 @@
+stages:
+  - monitor
+
+default:
+  image: python:3.12
+
+variables:
+  PYTHONPATH: src
+
+before_script:
+  - python --version
+
+# Daily job
+usage_monitor_daily:
+  stage: monitor
+  script:
+    - |
+      if [ "$TEST_WEBHOOK" = "true" ]; then
+        python -m usage_alert.main --test-webhook
+        exit 0
+      fi
+
+      ARGS="--fetch"
+
+      if [ -n "$USAGE_DATE" ]; then
+        ARGS="$ARGS --date $USAGE_DATE"
+      fi
+
+      python -m usage_alert.main $ARGS
+
+    - |
+      git config user.name "gitlab-ci"
+      git config user.email "gitlab-ci@example.com"
+
+      for path in data reports; do
+        if [ -e "$path" ]; then
+          git add -A "$path"
+        fi
+      done
+
+      if git diff --cached --quiet; then
+        echo "No generated usage changes to commit."
+        exit 0
+      fi
+
+      git commit -m "Update usage data and reports"
+      git pull --rebase origin "$CI_COMMIT_REF_NAME"
+      git push \
+        https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git \
+        HEAD:$CI_COMMIT_REF_NAME
+
+  rules:
+    - if: '$RUN_TYPE == "daily"'
+
+# Hourly job
+usage_monitor_hourly:
+  stage: monitor
+  script:
+    - python -m usage_alert.main --fetch --hourly
+
+    - |
+      git config user.name "gitlab-ci"
+      git config user.email "gitlab-ci@example.com"
+
+      for path in data reports; do
+        if [ -e "$path" ]; then
+          git add -A "$path"
+        fi
+      done
+
+      if git diff --cached --quiet; then
+        echo "No generated usage changes to commit."
+        exit 0
+      fi
+
+      git commit -m "Update usage data and reports"
+      git pull --rebase origin "$CI_COMMIT_REF_NAME"
+      git push \
+        https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git \
+        HEAD:$CI_COMMIT_REF_NAME
+
+  rules:
+    - if: '$RUN_TYPE == "hourly"'
