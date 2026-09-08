@@ -1,0 +1,2 @@
+usage_date_utc,metric,quantity,unit,feature_id,app_id,project_id,billing_tag,category,dimension_key,source_retrieved_at_utc,usage_hour_utc
+2026-09-08,Matrix Routing,165244.0,Transactions,hrn:here:service::olp-here:matrix-routing-8,0KzvdRNvNZM4xMFJDveD,,N/A,LocationServices,"{""app_id"":""0KzvdRNvNZM4xMFJDveD"",""billing_tag"":""N/A"",""feature_id"":""hrn:here:service::olp-here:matrix-routing-8""}",2026-09-08T10:30:45.891416+00:00,2026-09-08T10:00:00+00:00
