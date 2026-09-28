@@ -1,11 +1,61 @@
 # HERE Usage Alert
 
-Scheduled, organization-wide HERE usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2, stores analysis data under `data/`, writes reports under `reports/`, and checks for abnormal spikes. The GitHub Actions workflows commit those generated files back to the repository so the history stays available for traffic analysis.
+Scheduled, organization-wide HERE location-services usage monitoring with no hosted database or dashboard. Each run fetches usage from the HERE Cost Management Usage API v2, stores analysis data under `data/`, writes reports under `reports/`, and checks for abnormal spikes. The CI/CD pipelines commit those generated files back to the repository so the history stays available for traffic analysis.
 
-## Quick Start
+## Features
+
+- **Anomaly detection** — Compares each metric/dimension against the prior 30 days using median and median absolute deviation (MAD). A spike must pass both percentage/absolute-increase thresholds and a robust z-score threshold.
+- **Free-tier quota tracking** — Month-to-date transaction totals for services configured in `config/free_tiers.json`, with `APPROACHING` (80%) and `EXCEEDED` (100%) alerts.
+- **HERE Usage Alert rules** — Imports rules configured in the HERE portal and evaluates them against monitored usage each run.
+- **Auto-remediation** — Optionally disables API credentials or restricts app project scope when free-tier limits are exceeded.
+- **Webhook notifications** — Sends compact JSON events for anomalies, quota alerts, rule alerts, and healthy completions.
+- **Self-hosting** — The Git repository is the database, the CI scheduler is the cron, the Markdown reports are the dashboard, and the webhook is the alerting channel.
+
+## Project Layout
+
+```
+src/usage_alert/
+  main.py          CLI orchestration
+  client.py        HERE API HTTP client (OAuth1, realm discovery)
+  normalize.py     Schema normalization/validation
+  models.py        Dataclass models
+  config.py        Config loading
+  detect.py        Anomaly detection (median + MAD)
+  quota.py         Free-tier quota evaluation
+  rules.py         HERE Usage Alert rules import/evaluation
+  account.py       Account type classification
+  notify.py        Webhook payload builders + sender
+  report.py        Markdown report rendering
+  storage.py       CSV/JSON persistence + pruning
+  remediate.py     Auto-remediation (credential disable + project scope)
+
+config/
+  thresholds.json  Anomaly detection thresholds
+  free_tiers.json  HERE Base Plan free-tier allowances
+
+tests/             unittest suite (11 test files)
+docs/              Reference documentation
+```
+
+## Setup
+
+### Prerequisites
+
+- Python >= 3.12
+- HERE platform account with API credentials
+
+### Installation
+
+```sh
+pip install -e .
+```
+
+### Configuration
 
 1. Copy [.env.example](.env.example) to `.env` and set `here.client.id`, `here.access.key.id`, and `here.access.key.secret`. `HERE_REALM_ID` is not required: the client discovers the realm from the shared app credential by introspecting `GET /app/me/authorization` on the HERE Account API. Setting `HERE_REALM_ID` still overrides discovery, and the legacy `HERE_CLIENT_ID`, `HERE_ACCESS_KEY_ID`, and `HERE_ACCESS_KEY_SECRET` names remain supported (the lowercase canonical names take precedence when both are set). The example also includes optional remediation and alerting settings.
+
 2. Configure optional remediation using the [Remediation flags](#remediation-flags) below.
+
 3. Run the test suite:
 
    ```sh
@@ -50,26 +100,71 @@ The client authenticates with OAuth client credentials and never logs the client
 
 The Usage API, OAuth token, and HERE IAM endpoint URLs are fixed in the implementation. No endpoint URL or OAuth scope setting is required in `.env`; usage requests use the default `cold` channel. The active local settings are listed in [.env.example](.env.example).
 
-## Account type check
+## GitHub Actions Integration
 
-Advanced features such as HERE Usage Alerts are granted only to named user and partner plans; developer (Base Plan) accounts are not eligible. `--check-account` calls the BAM Customer API (`GET /v1/subscriptions` then `GET /v1/subscriptions/{id}/products` at `https://customer.bam.api.here.com/v1`) and the monitor app's IAM authorization, then classifies the realm as `developer` or `named_or_partner`:
+Two workflows run the same CLI on a schedule and can also be dispatched manually:
 
-- No BAM subscription, or no active subscription, means a developer/Base Plan realm.
-- An active subscription product whose name contains none of the developer markers counts as a commercial product and classifies the realm as `named_or_partner`.
-- Otherwise the realm is `developer` when it only carries free-tier products (for example `HERE SDK Explore Edition`) unless the monitor app is linked to IAM plans, which also classifies as `named_or_partner`.
+- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for both alerting and healthy completion events.
+- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks usage from the last 65 minutes, stores the rolling-window result under the current UTC hour, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for alerting and healthy completion events. It still skips markdown report generation when the checked window is healthy.
 
-The developer/free product markers are `DEFAULT_DEVELOPER_PRODUCT_MARKERS` in [src/usage_alert/account.py](src/usage_alert/account.py); update them if HERE's product naming changes. The newer BAM model bills even free tiers through subscriptions, so an active subscription alone does not prove a named/partner account.
+### Repository Secrets and Variables
 
-## Imported Usage Alert rules
+GitHub repository secrets and variables names cannot contain dots, so the workflows read the credentials from repository variables/secrets and pass them into the job under the canonical lowercase names.
 
-Named/partner realms can configure HERE Usage Alert rules in the HERE portal; developer realms get `403 readRules` and no rules are imported. The monitor imports them from `GET /v1/realm/{realmId}/rules` at `https://alert.usage.hereapi.com/v1` (`HereUsageClient.fetch_usage_alert_rules`).
+**Secret:**
 
-- Every daily and hourly monitoring run refreshes the rules and writes them to `data/usage-alert-rules.json`; if the refresh fails it falls back to the last stored copy. The hourly workflow therefore keeps the imported rules current in the repository.
-- Rules are applied by matching each active daily rule's `appId`/`featureId`/`billingTag` query conditions against the monitored day's usage and summing the matched series against the rule's absolute threshold. Matches (and their proposed remediation) surface in the markdown reports and the webhook payload as `rule_alert_count` / `rule_alerts`.
-- Notifications always go to the project `ALERT_WEBHOOK_URL` only. The emails or webhook configured on the imported HERE rules are never contacted by this tool.
-- `--rules` refreshes and prints the stored rules; `--test-rules` synthesizes one over-threshold record per active rule, runs the evaluation path, prints the webhook payload, and POSTs it to the project webhook as a smoke test.
+| Name | Description |
+|------|-------------|
+| `HERE_ACCESS_KEY_SECRET` | HERE OAuth access key secret |
 
-## Remediation flags
+**Variables:**
+
+| Name | Description |
+|------|-------------|
+| `HERE_CLIENT_ID` | HERE OAuth client ID |
+| `HERE_ACCESS_KEY_ID` | HERE OAuth access key ID |
+| `ALERT_WEBHOOK_URL` | Webhook endpoint for notifications |
+| `HERE_AUTO_DISABLE_APP_CREDENTIALS` | Enable credential disabling (optional, default `false`) |
+| `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT` | Enable project-scope restriction (optional, default `false`) |
+
+The realm is auto-discovered in CI, so no `HERE_REALM_ID` variable is needed.
+
+### Manual Dispatch
+
+To verify webhook delivery without querying HERE, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
+
+## GitLab CI/CD Integration
+
+The project repository at [main.gitlab.in.here.com/jiang1/usage-monitor](https://main.gitlab.in.here.com/jiang1/usage-monitor) runs the monitor on a schedule via [.gitlab-ci.yml](.gitlab-ci.yml):
+
+- `usage_monitor_daily`: daily usage fetch and analysis (optional `USAGE_DATE`, optional `TEST_WEBHOOK` smoke test).
+- `usage_monitor_hourly`: hourly check of the last 65 minutes.
+
+Both jobs run in the `python:3.12` image, read credentials from GitLab CI/CD variables, and auto-commit generated `data/`/`reports/` changes back to the current branch using the `CI_JOB_TOKEN` push URL.
+
+### CI/CD Variables
+
+Configure these under **Settings → CI/CD → Variables**:
+
+| Name | Masked | Description |
+|------|--------|-------------|
+| `HERE_ACCESS_KEY_SECRET` | Yes | HERE OAuth access key secret |
+| `HERE_ACCESS_KEY_ID` | No | HERE OAuth access key ID |
+| `HERE_CLIENT_ID` | No | HERE OAuth client ID |
+| `ALERT_WEBHOOK_URL` | No | Webhook endpoint for notifications |
+| `HERE_AUTO_DISABLE_APP_CREDENTIALS` | No | Enable credential disabling (optional) |
+| `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT` | No | Enable project-scope restriction (optional) |
+
+### Pipeline Schedules
+
+Set up two pipeline schedules under **Settings → CI/CD → Schedules**:
+
+| Schedule | `RUN_TYPE` | Description |
+|----------|------------|-------------|
+| Daily | `daily` | Runs `usage_monitor_daily` |
+| Hourly | `hourly` | Runs `usage_monitor_hourly` |
+
+## Remediation Flags
 
 `HERE_AUTO_DISABLE_APP_CREDENTIALS` and `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT` are both disabled by default in `.env.example`:
 
@@ -80,37 +175,32 @@ Project mode requires HERE permissions to read and manage the target app and pro
 
 Daily and hourly usage data are generated the same way for local runs and scheduled runs. The project prunes older files automatically: reports are kept for the last 90 days, and analysis data is retained only as long as needed for the configured history window, with a 90-day floor.
 
-## GitLab CI
-
-The project repository at [main.gitlab.in.here.com/jiang1/usage-monitor](https://main.gitlab.in.here.com/jiang1/usage-monitor) runs the monitor on a schedule via [.gitlab-ci.yml](.gitlab-ci.yml):
-
-- `usage_monitor_daily`: daily usage fetch and analysis (optional `USAGE_DATE`, optional `TEST_WEBHOOK` smoke test).
-- `usage_monitor_hourly`: hourly check of the last 65 minutes.
-
-Both jobs run in the `python:3.12` image, read credentials from GitLab CI/CD variables, and auto-commit generated `data/`/`reports/` changes back to the current branch using the `CI_JOB_TOKEN` push URL.
-
-Configure these CI/CD variables under **Settings → CI/CD → Variables**: masked variable `HERE_ACCESS_KEY_SECRET`, and variables `HERE_ACCESS_KEY_ID`, `HERE_CLIENT_ID`, `ALERT_WEBHOOK_URL` (plus optional `HERE_AUTO_DISABLE_APP_CREDENTIALS` and `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`). Set up two pipeline schedules with `RUN_TYPE=daily` and `RUN_TYPE=hourly` under **Settings → CI/CD → Schedules**.
-
-## GitHub Actions
-
-Two workflows run the same CLI on a schedule and can also be dispatched manually:
-
-- [usage-monitor.yml](.github/workflows/usage-monitor.yml): daily at 08:20 UTC. Accepts a historical `usage_date` input. It writes the daily analysis files and report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for both alerting and healthy completion events.
-- [usage-monitor-hourly.yml](.github/workflows/usage-monitor-hourly.yml): hourly at :20. Checks usage from the last 65 minutes, stores the rolling-window result under the current UTC hour, writes hourly analysis files and any alert report, commits generated `data/` and `reports/` changes back to the current branch, and sends a webhook for alerting and healthy completion events. It still skips markdown report generation when the checked window is healthy.
-
-GitHub repository secrets and variables names cannot contain dots, so the workflows read the credentials from repository variables/secrets and pass them into the job under the canonical lowercase names. Add this repository secret: `HERE_ACCESS_KEY_SECRET`.
-
-Add these repository variables: `HERE_CLIENT_ID`, `HERE_ACCESS_KEY_ID`, `HERE_AUTO_DISABLE_APP_CREDENTIALS`, `HERE_LIMIT_APP_TO_WITHIN_FREE_TIER_PROJECT`, `ALERT_WEBHOOK_URL`. The realm is auto-discovered in CI, so no `HERE_REALM_ID` variable is needed.
-
-To verify webhook delivery without querying HERE, manually run **HERE Usage Monitor** with `test_webhook` selected; it sends one synthetic critical event (`metric: synthetic_webhook_test`).
-
-The webhook payload is a compact JSON event, not a copy of the markdown report: it carries `report_path` as a reference plus only the anomaly, quota-alert, and imported-rule-alert summary fields (see [src/usage_alert/notify.py](src/usage_alert/notify.py)), while the full per-metric usage table and free-tier breakdown stay in the markdown report file. Seeing different content between the two is expected.
-
 ## Detection and Alerts
 
 For each metric and dimension set, the monitor requires 14 prior daily observations, then compares the target period with the prior 30 days using median and median absolute deviation (MAD). A spike must pass both the percentage/absolute-increase thresholds and a robust z-score threshold; when MAD is zero, a configured minimum absolute increase avoids divide-by-zero and low-volume noise. An alert identifies contributing dimensions, not root cause — deployment, retry, caching, and credential-leak explanations remain unverified hypotheses until corroborated by application telemetry.
 
 Each daily report also includes month-to-date transaction totals for services configured in `config/free_tiers.json`: `APPROACHING` at 80% of the free-tier allowance and `EXCEEDED` at 100%. DataStorage records count toward Data IO totals within their matching billing unit; non-comparable units stay in the usage summary only.
+
+The webhook payload is a compact JSON event, not a copy of the markdown report: it carries `report_path` as a reference plus only the anomaly, quota-alert, and imported-rule-alert summary fields (see [src/usage_alert/notify.py](src/usage_alert/notify.py)), while the full per-metric usage table and free-tier breakdown stay in the markdown report file. Seeing different content between the two is expected.
+
+## Account Type Check
+
+Advanced features such as HERE Usage Alerts are granted only to named user and partner plans; developer (Base Plan) accounts are not eligible. `--check-account` calls the BAM Customer API (`GET /v1/subscriptions` then `GET /v1/subscriptions/{id}/products` at `https://customer.bam.api.here.com/v1`) and the monitor app's IAM authorization, then classifies the realm as `developer` or `named_or_partner`:
+
+- No BAM subscription, or no active subscription, means a developer/Base Plan realm.
+- An active subscription product whose name contains none of the developer markers counts as a commercial product and classifies the realm as `named_or_partner`.
+- Otherwise the realm is `developer` when it only carries free-tier products (for example `HERE SDK Explore Edition`) unless the monitor app is linked to IAM plans, which also classifies as `named_or_partner`.
+
+The developer/free product markers are `DEFAULT_DEVELOPER_PRODUCT_MARKERS` in [src/usage_alert/account.py](src/usage_alert/account.py); update them if HERE's product naming changes. The newer BAM model bills even free tiers through subscriptions, so an active subscription alone does not prove a named/partner account.
+
+## Imported Usage Alert Rules
+
+Named/partner realms can configure HERE Usage Alert rules in the HERE portal; developer realms get `403 readRules` and no rules are imported. The monitor imports them from `GET /v1/realm/{realmId}/rules` at `https://alert.usage.hereapi.com/v1` (`HereUsageClient.fetch_usage_alert_rules`).
+
+- Every daily and hourly monitoring run refreshes the rules and writes them to `data/usage-alert-rules.json`; if the refresh fails it falls back to the last stored copy. The hourly workflow therefore keeps the imported rules current in the repository.
+- Rules are applied by matching each active daily rule's `appId`/`featureId`/`billingTag` query conditions against the monitored day's usage and summing the matched series against the rule's absolute threshold. Matches (and their proposed remediation) surface in the markdown reports and the webhook payload as `rule_alert_count` / `rule_alerts`.
+- Notifications always go to the project `ALERT_WEBHOOK_URL` only. The emails or webhook configured on the imported HERE rules are never contacted by this tool.
+- `--rules` refreshes and prints the stored rules; `--test-rules` synthesizes one over-threshold record per active rule, runs the evaluation path, prints the webhook payload, and POSTs it to the project webhook as a smoke test.
 
 ## Reference
 
