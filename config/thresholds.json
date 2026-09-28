@@ -6,6 +6,12 @@
   "minimum_absolute_increase": 1000,
   "percentage_increase_threshold": 0.5,
   "robust_z_score_threshold": 3.5,
+  "secondary_spike_multiplier": 5.0,
+  "secondary_min_baseline_days": 3,
+  "baseline_window": 7,
+  "weekly_growth_multiplier": 3.0,
+  "weekly_growth_min_absolute": 1000,
+  "secondary_min_absolute": 100,
   "severity": {
     "warning_percentage": 0.5,
     "critical_percentage": 2.0

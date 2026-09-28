@@ -33,4 +33,10 @@ def load_detection_config(path: Path) -> DetectionConfig:
         robust_z_score_threshold=float(payload["robust_z_score_threshold"]),
         warning_percentage=float(severity["warning_percentage"]),
         critical_percentage=float(severity["critical_percentage"]),
+        secondary_spike_multiplier=float(payload.get("secondary_spike_multiplier", 5.0)),
+        secondary_min_baseline_days=int(payload.get("secondary_min_baseline_days", 3)),
+        baseline_window=int(payload.get("baseline_window", 7)),
+        weekly_growth_multiplier=float(payload.get("weekly_growth_multiplier", 3.0)),
+        weekly_growth_min_absolute=float(payload.get("weekly_growth_min_absolute", 1000)),
+        secondary_min_absolute=float(payload.get("secondary_min_absolute", 100)),
     )

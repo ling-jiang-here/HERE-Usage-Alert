@@ -31,6 +31,12 @@ class DetectionConfig:
     critical_percentage: float
     data_retention_days: int = 90
     report_retention_days: int = 90
+    secondary_spike_multiplier: float = 5.0
+    secondary_min_baseline_days: int = 3
+    baseline_window: int = 7
+    weekly_growth_multiplier: float = 3.0
+    weekly_growth_min_absolute: float = 1000
+    secondary_min_absolute: float = 100
 
 
 @dataclass(frozen=True)

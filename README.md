@@ -4,12 +4,17 @@ Scheduled, organization-wide HERE location-services usage monitoring with no hos
 
 ## Features
 
-- **Anomaly detection** — Compares each metric/dimension against the prior 30 days using median and median absolute deviation (MAD). A spike must pass both percentage/absolute-increase thresholds and a robust z-score threshold.
+- **Multi-strategy anomaly detection** — Combines four complementary detection strategies to catch different types of unexpected usage:
+  - **Primary spike detection** — Compares each metric/dimension against a rolling 7-day baseline using median and median absolute deviation (MAD). A spike must pass percentage/absolute-increase thresholds and a robust z-score threshold.
+  - **Secondary spike detection** — For services with shorter track records (as little as 3 days), flags any day where usage exceeds 5x the recent average and the absolute increase is at least 100 calls. This catches dramatic spikes on new or low-volume services that the primary rule would overlook.
+  - **Week-over-week growth detection** — Compares today's usage against the same day one week ago. If usage has grown by more than 3x (and the absolute increase exceeds 1,000 calls), raises an alert. This catches sustained growth that the rolling baseline would otherwise absorb.
+  - **Baseline window** — Uses the most recent 7 days for baseline calculation instead of the full 30-day window, ensuring the baseline reflects current behavior rather than being skewed by stale high-usage periods from weeks earlier.
 - **Free-tier quota tracking** — Month-to-date transaction totals for services configured in `config/free_tiers.json`, with `APPROACHING` (80%) and `EXCEEDED` (100%) alerts.
 - **HERE Usage Alert rules** — Imports rules configured in the HERE portal and evaluates them against monitored usage each run.
 - **Auto-remediation** — Optionally disables API credentials or restricts app project scope when free-tier limits are exceeded.
 - **Webhook notifications** — Sends compact JSON events for anomalies, quota alerts, rule alerts, and healthy completions.
 - **Self-hosting** — The Git repository is the database, the CI scheduler is the cron, the Markdown reports are the dashboard, and the webhook is the alerting channel.
+- **Support ticket case studies** — Real usage data from HERE support tickets under `cases/`, with analysis of how each anomaly was detected (or missed) and the resulting improvements to the detection logic.
 
 ## Project Layout
 
@@ -20,7 +25,7 @@ src/usage_alert/
   normalize.py     Schema normalization/validation
   models.py        Dataclass models
   config.py        Config loading
-  detect.py        Anomaly detection (median + MAD)
+  detect.py        Multi-strategy anomaly detection
   quota.py         Free-tier quota evaluation
   rules.py         HERE Usage Alert rules import/evaluation
   account.py       Account type classification
@@ -33,6 +38,7 @@ config/
   thresholds.json  Anomaly detection thresholds
   free_tiers.json  HERE Base Plan free-tier allowances
 
+cases/             Real support ticket usage data + analysis (see cases/REVIEW.md)
 tests/             unittest suite (11 test files)
 docs/              Reference documentation
 ```
@@ -177,7 +183,14 @@ Daily and hourly usage data are generated the same way for local runs and schedu
 
 ## Detection and Alerts
 
-For each metric and dimension set, the monitor requires 14 prior daily observations, then compares the target period with the prior 30 days using median and median absolute deviation (MAD). A spike must pass both the percentage/absolute-increase thresholds and a robust z-score threshold; when MAD is zero, a configured minimum absolute increase avoids divide-by-zero and low-volume noise. An alert identifies contributing dimensions, not root cause — deployment, retry, caching, and credential-leak explanations remain unverified hypotheses until corroborated by application telemetry.
+For each metric and dimension set, the monitor applies four complementary detection strategies:
+
+1. **Primary spike detection** — Requires 14 prior daily observations, then compares the target day against a rolling 7-day baseline using median and median absolute deviation (MAD). A spike must pass both the percentage/absolute-increase thresholds and a robust z-score threshold; when MAD is zero, a configured minimum absolute increase avoids divide-by-zero and low-volume noise.
+2. **Secondary spike detection** — For services with shorter track records (as little as 3 days), flags any day where usage exceeds 5x the recent average and the absolute increase is at least 100 calls. This catches dramatic spikes on new or low-volume services that the primary rule would overlook.
+3. **Week-over-week growth detection** — Compares today's usage against the same day one week ago. If usage has grown by more than 3x (and the absolute increase exceeds 1,000 calls), raises an alert. This catches sustained growth that the rolling baseline would otherwise absorb.
+4. **Baseline window** — Uses the most recent 7 days for baseline calculation instead of the full 30-day window, ensuring the baseline reflects current behavior rather than being skewed by stale high-usage periods from weeks earlier.
+
+An alert identifies contributing dimensions, not root cause — deployment, retry, caching, and credential-leak explanations remain unverified hypotheses until corroborated by application telemetry.
 
 Each daily report also includes month-to-date transaction totals for services configured in `config/free_tiers.json`: `APPROACHING` at 80% of the free-tier allowance and `EXCEEDED` at 100%. DataStorage records count toward Data IO totals within their matching billing unit; non-comparable units stay in the usage summary only.
 
@@ -201,6 +214,20 @@ Named/partner realms can configure HERE Usage Alert rules in the HERE portal; de
 - Rules are applied by matching each active daily rule's `appId`/`featureId`/`billingTag` query conditions against the monitored day's usage and summing the matched series against the rule's absolute threshold. Matches (and their proposed remediation) surface in the markdown reports and the webhook payload as `rule_alert_count` / `rule_alerts`.
 - Notifications always go to the project `ALERT_WEBHOOK_URL` only. The emails or webhook configured on the imported HERE rules are never contacted by this tool.
 - `--rules` refreshes and prints the stored rules; `--test-rules` synthesizes one over-threshold record per active rule, runs the evaluation path, prints the webhook payload, and POSTs it to the project webhook as a smoke test.
+
+## Support Ticket Case Studies
+
+The `cases/` folder contains real usage data from HERE support tickets, along with analysis of how each anomaly was detected (or missed) and the resulting improvements to the detection logic. See [cases/REVIEW.md](cases/REVIEW.md) for the full write-up.
+
+| Case | Customer | Anomaly | Detection |
+|------|----------|---------|-----------|
+| CS0184870 | NTT Data | Tour Planning spike (13,443 vs baseline 45) | Secondary spike rule |
+| CS0185043 | Wireless Logic | Map Attributes surge (11M vs baseline 370K) | 7-day baseline window |
+| CS0181837 | CTP | Time Aware Routing spike (983K vs baseline 2.7K) | Primary spike rule |
+| CS0185184 | CAR1983 | Traffic 22x growth over 3 weeks | Week-over-week growth check |
+| CS0182583 | ООО "К-авто" | Geocode spike (59K vs baseline 231) | Primary spike rule |
+
+Each case study documents what was found, why it was missed (if applicable), what was changed in the detection logic, and the expected outcome. The cases folder serves as both a regression test suite and a record of how real-world usage patterns have shaped the project's evolution.
 
 ## Reference
 

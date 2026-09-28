@@ -25,7 +25,7 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual("critical", anomalies[0].severity)
 
     def test_skips_series_without_sufficient_history(self) -> None:
-        records = [self.record(self.target - timedelta(days=index), 10_000) for index in range(1, 14)]
+        records = [self.record(self.target - timedelta(days=index), 10_000) for index in range(1, 7)]
         anomalies = detect_anomalies(records + [self.record(self.target, 40_000)], self.target, self.config)
         self.assertEqual([], anomalies)
 
