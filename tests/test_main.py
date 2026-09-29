@@ -39,7 +39,7 @@ class MainTests(unittest.TestCase):
         self.assertEqual("critical", anomalies[0].severity)
         self.assertEqual("synthetic_webhook_test", records[0].metric)
 
-    def test_empty_daily_fetch_runs_service_access_recovery(self) -> None:
+    def test_empty_daily_fetch_writes_no_usage_report_and_runs_recovery(self) -> None:
         target_date = date(2026, 9, 1)
         with TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -59,6 +59,16 @@ class MainTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (root / "config" / "free_tiers.json").write_text(
+                json.dumps(
+                    {
+                        "approaching_threshold": 0.8,
+                        "data_io_free_gb_months": 20,
+                        "transaction_free_tiers": {"Autocomplete": 30_000},
+                    }
+                ),
+                encoding="utf-8",
+            )
             with patch.dict(
                 os.environ,
                 {
@@ -70,27 +80,39 @@ class MainTests(unittest.TestCase):
                 clear=False,
             ):
                 with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps({"items": []})):
-                    with patch("usage_alert.main.maybe_remediate_app_access") as remediate:
-                        remediate.return_value.message = "Project-based service restriction was restored for app target-app."
-                        with patch("usage_alert.main.notify_webhook", return_value=True) as notify_webhook:
-                            with patch(
-                                "sys.argv",
-                                [
-                                    "usage_alert.main",
-                                    "--fetch",
-                                    "--date",
-                                    target_date.isoformat(),
-                                    "--root",
-                                    str(root),
-                                ],
-                            ):
-                                self.assertEqual(0, main())
+                    with patch(
+                        "usage_alert.main.HereUsageClient.fetch_usage_month_to_date",
+                        return_value=json.dumps({"items": []}),
+                    ):
+                        with patch("usage_alert.main.maybe_remediate_app_access") as remediate:
+                            remediate.return_value.message = "Project-based service restriction was restored for app target-app."
+                            with patch("usage_alert.main.notify_webhook", return_value=True) as notify_webhook:
+                                with patch(
+                                    "sys.argv",
+                                    [
+                                        "usage_alert.main",
+                                        "--fetch",
+                                        "--date",
+                                        target_date.isoformat(),
+                                        "--root",
+                                        str(root),
+                                    ],
+                                ):
+                                    self.assertEqual(0, main())
 
+            # A no-usage day still writes a report so daily coverage stays continuous.
+            report_path = root / "reports" / f"{target_date.isoformat()}.md"
+            self.assertTrue(report_path.exists())
+            self.assertIn(f"# HERE Usage Report: {target_date.isoformat()}", report_path.read_text(encoding="utf-8"))
+            # No curated data file is written when there is no usage for the day.
+            self.assertFalse((root / "data" / "curated" / f"{target_date.isoformat()}.csv").exists())
+
+        # Recovery still runs on an empty day, and the webhook carries the target date.
         remediate.assert_called_once_with([], [])
         notify_webhook.assert_called_once_with(
             [],
             [],
-            target_date.isoformat(),
+            str(report_path),
             [],
             "Project-based service restriction was restored for app target-app.",
             target_date.isoformat(),
@@ -155,20 +177,24 @@ class MainTests(unittest.TestCase):
                 clear=False,
             ):
                 with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps(payload)):
-                    with patch("usage_alert.main.notify_webhook") as notify_webhook:
-                        notify_webhook.return_value = True
-                        with patch(
-                            "sys.argv",
-                            [
-                                "usage_alert.main",
-                                "--fetch",
-                                "--date",
-                                target_date.isoformat(),
-                                "--root",
-                                str(root),
-                            ],
-                        ):
-                            self.assertEqual(0, main())
+                    with patch(
+                        "usage_alert.main.HereUsageClient.fetch_usage_month_to_date",
+                        return_value=json.dumps(payload),
+                    ):
+                        with patch("usage_alert.main.notify_webhook") as notify_webhook:
+                            notify_webhook.return_value = True
+                            with patch(
+                                "sys.argv",
+                                [
+                                    "usage_alert.main",
+                                    "--fetch",
+                                    "--date",
+                                    target_date.isoformat(),
+                                    "--root",
+                                    str(root),
+                                ],
+                            ):
+                                self.assertEqual(0, main())
             self.assertTrue((root / "data" / "curated" / "2026-08-18.csv").exists())
             self.assertTrue((root / "reports" / "2026-08-18.md").exists())
             self.assertFalse((root / "data" / "curated" / "2026-05-19.csv").exists())
@@ -176,7 +202,9 @@ class MainTests(unittest.TestCase):
             self.assertFalse((root / "reports" / "2026-05-19.md").exists())
             self.assertTrue((root / "reports" / "2026-06-25.md").exists())
             self.assertFalse((root / "artifacts").exists())
-            notify_webhook.assert_called_once_with([], unittest.mock.ANY, unittest.mock.ANY, [], None, None, [])
+            notify_webhook.assert_called_once_with(
+                [], unittest.mock.ANY, unittest.mock.ANY, [], None, target_date.isoformat(), []
+            )
 
     def test_hourly_fetch_mode_skips_empty_completed_hour(self) -> None:
         with TemporaryDirectory() as temporary_directory:
@@ -451,6 +479,178 @@ class MainTests(unittest.TestCase):
             self.assertTrue((root / "reports" / "hourly" / f"{target_hour.strftime('%Y-%m-%dT%H')}Z.md").exists())
             notify_webhook.assert_called_once()
 
+    def test_daily_quota_uses_month_to_date_fetch_even_when_target_day_is_empty(self) -> None:
+        # The target day has no usage, but a spike earlier in the month must still
+        # be counted toward the monthly free tier via the month-to-date fetch.
+        target_date = date(2026, 9, 25)
+        spike_day = date(2026, 9, 8)
+        month_payload = {
+            "items": [
+                {
+                    "usageDateTime": f"{spike_day.isoformat()}T08:00:00Z",
+                    "name": "Matrix Routing",
+                    "billableValue": 1_136_325,
+                    "valueDriver": "Transactions",
+                    "featureId": "matrix-routing",
+                    "appId": "fleet-prod",
+                }
+            ]
+        }
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "config").mkdir()
+            (root / "config" / "thresholds.json").write_text(
+                json.dumps(
+                    {
+                        "history_days": 30,
+                        "data_retention_days": 45,
+                        "report_retention_days": 60,
+                        "minimum_baseline_days": 14,
+                        "minimum_absolute_increase": 1000,
+                        "percentage_increase_threshold": 0.5,
+                        "robust_z_score_threshold": 3.5,
+                        "severity": {"warning_percentage": 0.5, "critical_percentage": 2.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "config" / "free_tiers.json").write_text(
+                json.dumps(
+                    {
+                        "approaching_threshold": 0.8,
+                        "data_io_free_gb_months": 20,
+                        "transaction_free_tiers": {"Matrix Routing": 2_500},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "HERE_REALM_ID": "example",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
+                },
+                clear=False,
+            ):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps({"items": []})):
+                    with patch(
+                        "usage_alert.main.HereUsageClient.fetch_usage_month_to_date",
+                        return_value=json.dumps(month_payload),
+                    ) as month_fetch:
+                        with patch("usage_alert.main.notify_webhook", return_value=True) as notify_webhook:
+                            with patch(
+                                "sys.argv",
+                                [
+                                    "usage_alert.main",
+                                    "--fetch",
+                                    "--date",
+                                    target_date.isoformat(),
+                                    "--root",
+                                    str(root),
+                                ],
+                            ):
+                                self.assertEqual(0, main())
+
+            month_fetch.assert_called_once_with(target_date)
+            report_contents = (root / "reports" / f"{target_date.isoformat()}.md").read_text(encoding="utf-8")
+            self.assertIn("Matrix Routing", report_contents)
+            self.assertIn("EXCEEDED", report_contents)
+            # The webhook receives the exceeded quota alert derived from the month-to-date total.
+            quota_alerts = notify_webhook.call_args.args[3]
+            self.assertEqual(1, len(quota_alerts))
+            self.assertEqual("Matrix Routing", quota_alerts[0].metric)
+            self.assertEqual(1_136_325, quota_alerts[0].usage)
+            self.assertEqual("EXCEEDED", quota_alerts[0].status)
+
+    def test_daily_quota_falls_back_to_local_history_when_month_fetch_fails(self) -> None:
+        from usage_alert.client import HereClientError
+
+        target_date = date(2026, 9, 25)
+        # Local curated history already records an earlier over-tier spike this month.
+        spike_csv_day = date(2026, 9, 8)
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "config").mkdir()
+            (root / "data" / "curated").mkdir(parents=True)
+            (root / "config" / "thresholds.json").write_text(
+                json.dumps(
+                    {
+                        "history_days": 30,
+                        "data_retention_days": 45,
+                        "report_retention_days": 60,
+                        "minimum_baseline_days": 14,
+                        "minimum_absolute_increase": 1000,
+                        "percentage_increase_threshold": 0.5,
+                        "robust_z_score_threshold": 3.5,
+                        "severity": {"warning_percentage": 0.5, "critical_percentage": 2.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "config" / "free_tiers.json").write_text(
+                json.dumps(
+                    {
+                        "approaching_threshold": 0.8,
+                        "data_io_free_gb_months": 20,
+                        "transaction_free_tiers": {"Matrix Routing": 2_500},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            from usage_alert.storage import write_daily_records
+
+            write_daily_records(
+                [
+                    UsageRecord(
+                        usage_date=spike_csv_day,
+                        metric="Matrix Routing",
+                        quantity=1_136_325,
+                        unit="Transactions",
+                        feature_id="matrix-routing",
+                        app_id="fleet-prod",
+                        project_id=None,
+                        billing_tag=None,
+                        dimension_key='{"app_id":"fleet-prod","feature_id":"matrix-routing"}',
+                        source_retrieved_at=datetime(spike_csv_day.year, spike_csv_day.month, spike_csv_day.day, tzinfo=timezone.utc),
+                    )
+                ],
+                root / "data" / "curated",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "HERE_REALM_ID": "example",
+                    "HERE_ACCESS_KEY_ID": "client-id",
+                    "HERE_ACCESS_KEY_SECRET": "client-secret",
+                },
+                clear=False,
+            ):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps({"items": []})):
+                    with patch(
+                        "usage_alert.main.HereUsageClient.fetch_usage_month_to_date",
+                        side_effect=HereClientError("boom"),
+                    ):
+                        with patch("usage_alert.main.notify_webhook", return_value=True) as notify_webhook:
+                            with patch(
+                                "sys.argv",
+                                [
+                                    "usage_alert.main",
+                                    "--fetch",
+                                    "--date",
+                                    target_date.isoformat(),
+                                    "--root",
+                                    str(root),
+                                ],
+                            ):
+                                self.assertEqual(0, main())
+
+            # Falls back to local curated history, so the EXCEEDED alert still fires.
+            quota_alerts = notify_webhook.call_args.args[3]
+            self.assertEqual(1, len(quota_alerts))
+            self.assertEqual("Matrix Routing", quota_alerts[0].metric)
+            self.assertEqual("EXCEEDED", quota_alerts[0].status)
+
     def test_fetch_mode_skips_remediation_when_monitor_uses_same_app_credentials(self) -> None:
         target_date = date(2026, 8, 26)
         payload = {
@@ -505,7 +705,8 @@ class MainTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps(payload)):
+                with patch("usage_alert.main.HereUsageClient.fetch_usage", return_value=json.dumps(payload)), \
+                        patch("usage_alert.main.HereUsageClient.fetch_usage_month_to_date", return_value=json.dumps(payload)):
                     with patch("usage_alert.main.notify_webhook") as notify_webhook:
                         notify_webhook.return_value = True
                         with patch("usage_alert.remediate.HereIdentityClient") as identity_client_class:

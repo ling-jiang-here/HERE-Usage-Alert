@@ -147,37 +147,28 @@ def main() -> int:
     raw_item_count = len(payload.get("items", payload.get("records", []))) if isinstance(payload, dict) else len(payload)
     records = normalize_records(payload)
     daily_records = [record for record in records if record.usage_date == target_date]
+    if not daily_records and records and not arguments.fetch:
+        observed_dates = ", ".join(sorted({record.usage_date.isoformat() for record in records}))
+        raise ValueError(
+            f"Input has no records for {target_date.isoformat()}; normalized record dates: {observed_dates}"
+        )
     saved_rules = _load_usage_alert_rules(client, arguments.root / "data" / "usage-alert-rules.json")
-    if not daily_records:
-        if records:
-            observed_dates = ", ".join(sorted({record.usage_date.isoformat() for record in records}))
-            raise ValueError(
-                f"Input has no records for {target_date.isoformat()}; normalized record dates: {observed_dates}"
-            )
-        print(
-            f"No daily usage records for {target_date.isoformat()}; no report written. "
-            f"(raw API items: {raw_item_count}, normalized records: 0)"
-        )
-        remediation = maybe_remediate_app_access([], [])
-        if remediation.message:
-            print(remediation.message)
-        notified = notify_webhook(
-            [], [], target_date.isoformat(), [], remediation.message or None, target_date.isoformat(), []
-        )
-        print(f"Webhook event sent: {'yes' if notified else 'no'}")
-        return 0 if notified else 1
     curated_directory = arguments.root / "data" / "curated"
     history = [record for record in read_records(curated_directory) if record.usage_date != target_date]
-    write_daily_records(daily_records, curated_directory)
-    prune_daily_files(curated_directory, target_date, max(config.history_days, config.data_retention_days), ".csv")
+    if daily_records:
+        write_daily_records(daily_records, curated_directory)
+        prune_daily_files(curated_directory, target_date, max(config.history_days, config.data_retention_days), ".csv")
+    else:
+        print(
+            f"No daily usage records for {target_date.isoformat()}. "
+            f"(raw API items: {raw_item_count}, normalized records: {len(records)}) "
+            "Writing a no-usage report so the daily coverage stays continuous."
+        )
     all_records = history + daily_records
     rule_alerts = evaluate_usage_alert_rules(daily_records, saved_rules.rules)
     anomalies = detect_anomalies(all_records, target_date, config)
     threshold, free_tiers, data_io_free_gb = load_free_tiers(arguments.root / "config" / "free_tiers.json")
-    month_records = [
-        record for record in all_records
-        if record.usage_date.year == target_date.year and record.usage_date.month == target_date.month
-    ]
+    month_records = _month_to_date_records(client, target_date, all_records, arguments.fetch)
     quota_statuses = evaluate_month_to_date(month_records, threshold, free_tiers, data_io_free_gb)
     quota_alerts = [quota for quota in quota_statuses if quota.status == "EXCEEDED"]
     remediation = maybe_remediate_app_access(month_records, quota_alerts)
@@ -186,14 +177,15 @@ def main() -> int:
     if rule_alerts:
         print(f"Usage alert rule thresholds matched: {len(rule_alerts)}")
     report = render_daily_report(
-        daily_records, anomalies, quota_statuses, remediation.message or None, rule_alerts
+        daily_records, anomalies, quota_statuses, remediation.message or None, rule_alerts,
+        usage_date=target_date.isoformat(),
     )
     report_path = write_daily_report(report, arguments.root / "reports", target_date.isoformat())
     prune_daily_files(arguments.root / "reports", target_date, config.report_retention_days, ".md")
     report_reference = str(report_path)
     print(f"Wrote report: {report_path}")
     print(f"Anomalies: {len(anomalies)}")
-    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts, remediation.message or None, None, rule_alerts)
+    notified = notify_webhook(anomalies, daily_records, report_reference, quota_alerts, remediation.message or None, target_date.isoformat(), rule_alerts)
     print(f"Webhook event sent: {'yes' if notified else 'no'}")
     return 0 if notified else 1
 
@@ -276,6 +268,62 @@ def _synthetic_test_anomaly():
         robust_z_score=10.0,
         severity="critical",
     )
+
+
+def _aggregate_records_by_day(records: list[UsageRecord]) -> list[UsageRecord]:
+    """Collapse hour-detail records into one record per (day, metric, dimension, unit).
+
+    Drops the hour so the result behaves like the daily curated series used for
+    month-to-date quota evaluation.
+    """
+    aggregated: list[UsageRecord] = []
+    positions: dict[tuple[date, str, str, str], int] = {}
+    for record in records:
+        day_record = replace(record, usage_hour_utc=None)
+        key = (day_record.usage_date, day_record.metric, day_record.dimension_key, day_record.unit)
+        if key in positions:
+            existing = aggregated[positions[key]]
+            aggregated[positions[key]] = replace(
+                existing,
+                quantity=existing.quantity + day_record.quantity,
+                category=existing.category or day_record.category,
+            )
+            continue
+        positions[key] = len(aggregated)
+        aggregated.append(day_record)
+    return aggregated
+
+
+def _month_to_date_records(
+    client: HereUsageClient,
+    target_date: date,
+    fallback_records: list[UsageRecord],
+    use_fetch: bool,
+) -> list[UsageRecord]:
+    """Return month-to-date usage for quota evaluation.
+
+    In fetch mode this queries HERE for the whole month at hour detail so a spike
+    earlier in the month keeps counting toward the monthly quota regardless of the
+    locally committed history. If the month query fails, or in fixture/input mode,
+    it falls back to the provided local records filtered to the target month.
+    """
+    local_month = [
+        record for record in fallback_records
+        if record.usage_date.year == target_date.year and record.usage_date.month == target_date.month
+    ]
+    if not use_fetch:
+        return local_month
+    try:
+        payload = json.loads(client.fetch_usage_month_to_date(target_date))
+    except HereClientError as error:
+        print(f"Month-to-date usage fetch failed; using local history for quotas. {error}")
+        return local_month
+    month_records = normalize_records(payload, preserve_hours=True)
+    aggregated = _aggregate_records_by_day(
+        record for record in month_records
+        if record.usage_date.year == target_date.year and record.usage_date.month == target_date.month
+    )
+    return aggregated or local_month
 
 
 def _aggregate_hourly_window_records(records: list[UsageRecord], target_hour: datetime) -> list[UsageRecord]:

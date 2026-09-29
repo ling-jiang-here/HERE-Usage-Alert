@@ -43,6 +43,18 @@ class HereUsageClient:
             f"{usage_date.isoformat()}T00:00:00Z", f"{usage_date.isoformat()}T23:59:59Z", "day"
         )
 
+    def fetch_usage_month_to_date(self, target_date: date) -> str:
+        """Fetch usage from the first of the target date's month through that date.
+
+        Uses hour-level detail because the day-level detail response does not
+        reliably surface transaction usage; hour detail is aggregated by the
+        caller into daily series for month-to-date quota evaluation.
+        """
+        month_start = target_date.replace(day=1)
+        return self._fetch_usage_window(
+            f"{month_start.isoformat()}T00:00:00Z", f"{target_date.isoformat()}T23:59:59Z", "hour"
+        )
+
     def fetch_usage_hour(self, usage_hour_utc: datetime) -> str:
         if usage_hour_utc.tzinfo is None:
             usage_hour_utc = usage_hour_utc.replace(tzinfo=timezone.utc)

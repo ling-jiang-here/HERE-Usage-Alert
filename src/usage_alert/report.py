@@ -12,8 +12,9 @@ from .rules import RuleAlert
 def render_daily_report(
     records: list[UsageRecord], anomalies: list[Anomaly], quota_statuses: list[QuotaStatus] | None = None,
     remediation_note: str | None = None, rule_alerts: list[RuleAlert] | None = None,
+    usage_date: str | None = None,
 ) -> str:
-    usage_date = records[0].usage_date.isoformat() if records else "unknown"
+    usage_date = usage_date or (records[0].usage_date.isoformat() if records else "unknown")
     usage_summary = summarize_usage(records)
     lines = [
         f"# HERE Usage Report: {usage_date}",
